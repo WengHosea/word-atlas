@@ -37,7 +37,9 @@ android {
     // key stable across builds so upgrades do not wipe the app's data folder.
     signingConfigs {
         debugFixed {
-            storeFile file('word-atlas-debug.keystore')
+            // Kept at the repository root so the CI sparse-checkout pattern
+            // (/*) always picks it up.
+            storeFile rootProject.file('android-debug.keystore')
             storePassword 'wordatlas'
             keyAlias 'wordatlas'
             keyPassword 'wordatlas'

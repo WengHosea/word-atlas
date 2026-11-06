@@ -33,14 +33,6 @@ jobs:
             !/public/atlas/thumb/
             !/public/atlas/audio/
 
-      # The debug keystore must be present for the stable debug signing config
-      # in android/app/build.gradle. It is checked in on purpose: the point is
-      # to have the *same* signing key locally and in CI.
-      - name: Restore debug keystore
-        run: |
-          test -f android/app/word-atlas-debug.keystore \
-            || { echo "missing android/app/word-atlas-debug.keystore"; exit 1; }
-
       # Capacitor CLI 8 hard-requires Node >= 22, so Node 20 cannot be used here.
       - name: Setup Node.js 22
         uses: actions/setup-node@v4
@@ -74,6 +66,17 @@ jobs:
 
       - name: Sync Capacitor Android project
         run: npx cap sync android
+
+      # Safety net: the stable debug keystore must exist, otherwise every
+      # build would be signed differently and reinstalling the app would wipe
+      # the user's 600 MB media pack.
+      - name: Ensure debug keystore is present
+        run: |
+          if [ ! -f android-debug.keystore ]; then
+            echo "::error::android-debug.keystore is missing from the checkout"
+            exit 1
+          fi
+          ls -l android-debug.keystore
 
       - name: Assemble debug APK
         working-directory: android
