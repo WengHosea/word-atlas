@@ -1,8 +1,8 @@
 package com.haoxin.wordatlas;
 
+import android.os.Environment;
 import android.os.Handler;
 import android.os.Looper;
-import android.os.Environment;
 
 import com.getcapacitor.JSObject;
 import com.getcapacitor.Plugin;
@@ -11,7 +11,6 @@ import com.getcapacitor.PluginMethod;
 import com.getcapacitor.annotation.CapacitorPlugin;
 
 import java.io.File;
-import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -30,6 +29,7 @@ import java.util.zip.ZipFile;
 @CapacitorPlugin(name = "MediaPack")
 public class MediaPackPlugin extends Plugin {
 
+    /** Listeners must be notified on the main thread. */
     private final Handler main = new Handler(Looper.getMainLooper());
     private final ExecutorService worker = Executors.newSingleThreadExecutor();
 
@@ -45,7 +45,9 @@ public class MediaPackPlugin extends Plugin {
      * survives every upgrade and only has to be pushed once.
      */
     private File[] packCandidates() {
-        File download = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOAD);
+        // "Download" is spelled out instead of using Environment.DIRECTORY_DOWNLOAD,
+        // which is not visible in the android-36 stub jar.
+        File download = Environment.getExternalStoragePublicDirectory("Download");
         return new File[] {
             // The app's own external files dir needs no permission at all, so
             // it stays the primary location.
@@ -78,16 +80,16 @@ public class MediaPackPlugin extends Plugin {
             try {
                 File target = new File(getContext().getExternalFilesDir(null), "atlas");
                 if (target.isDirectory() && new File(target, "index.json").exists()) {
-                    notifyListeners("mediaPack", packInfo(true, 0, 0));
+                    emit(packInfo(true, 0, 0));
                     return;
                 }
                 File zip = findPack();
                 if (zip == null) return;
-                notifyListeners("mediaPack", packInfo(false, 0, 0));
+                emit(packInfo(false, 0, 0));
                 JSObject res = unpack(zip, target);
-                notifyListeners("mediaPack", packInfo(true, res.getInt("files"), res.getLong("bytes")));
+                emit(packInfo(true, res.getInt("files"), res.getLong("bytes")));
             } catch (Exception e) {
-                notifyListeners("mediaPack", packInfo(false, 0, 0));
+                emit(packInfo(false, 0, 0));
             }
         });
     }
@@ -99,6 +101,11 @@ public class MediaPackPlugin extends Plugin {
         out.put("bytes", bytes);
         out.put("path", new File(getContext().getExternalFilesDir(null), "atlas").getAbsolutePath());
         return out;
+    }
+
+    /** Notify the web layer; listeners must be called on the main thread. */
+    private void emit(JSObject payload) {
+        main.post(() -> notifyListeners("mediaPack", payload));
     }
 
     /**
