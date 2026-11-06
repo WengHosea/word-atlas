@@ -83,8 +83,7 @@ public class MediaPackPlugin extends Plugin {
                     return;
                 }
 
-                File target = new File(getContext().getExternalFilesDir(null), "atlas");
-                JSObject result = unpack(zip, target);
+                JSObject result = unpack(zip, new File(getContext().getExternalFilesDir(null), "atlas"));
                 call.resolve(result);
             } catch (Exception e) {
                 call.reject("解压失败: " + e.getMessage());
@@ -92,15 +91,29 @@ public class MediaPackPlugin extends Plugin {
         });
     }
 
-    /** Unpack a zip into a target directory, returning file/byte counts. */
+    /**
+     * Unpack a zip into a target directory, returning file/byte counts.
+     *
+     * The zip is usually produced from the `public/atlas` folder, so every
+     * entry starts with `atlas/`. That prefix is stripped so the files land
+     * directly in the target folder instead of `target/atlas/...`.
+     */
     private JSObject unpack(File zip, File target) throws Exception {
         int files = 0;
         long bytes = 0;
         try (ZipFile zf = new ZipFile(zip)) {
+            String prefix = detectPrefix(zf);
             java.util.Enumeration<? extends ZipEntry> entries = zf.entries();
             while (entries.hasMoreElements()) {
                 ZipEntry entry = entries.nextElement();
-                File out = new File(target, entry.getName());
+                String name = entry.getName();
+                if (!prefix.isEmpty() && name.startsWith(prefix)) {
+                    name = name.substring(prefix.length());
+                }
+                if (name.isEmpty()) {
+                    continue;
+                }
+                File out = new File(target, name);
                 // Guard against zip-slip: the entry name must stay under target.
                 if (!out.getCanonicalPath().startsWith(target.getCanonicalPath() + File.separator)) {
                     continue;
@@ -129,6 +142,30 @@ public class MediaPackPlugin extends Plugin {
         out.put("bytes", bytes);
         out.put("path", target.getAbsolutePath());
         return out;
+    }
+
+    /** Return the shared top-level folder of the archive, e.g. "atlas/". */
+    private String detectPrefix(ZipFile zf) {
+        java.util.Enumeration<? extends ZipEntry> entries = zf.entries();
+        String first = null;
+        while (entries.hasMoreElements() && first == null) {
+            ZipEntry e = entries.nextElement();
+            if (e.isDirectory()) continue;
+            first = e.getName();
+            break;
+        }
+        if (first == null) return "";
+        int slash = first.indexOf('/');
+        if (slash <= 0) return "";
+        String candidate = first.substring(0, slash + 1);
+        // Only strip it when every entry shares it.
+        entries = zf.entries();
+        while (entries.hasMoreElements()) {
+            ZipEntry e = entries.nextElement();
+            if (e.isDirectory()) continue;
+            if (!e.getName().startsWith(candidate)) return "";
+        }
+        return candidate;
     }
 
     /** Report whether a media pack is present in the app's files dir. */
