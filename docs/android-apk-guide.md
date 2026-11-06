@@ -53,11 +53,11 @@
 https://github.com/WengHosea/word-atlas/releases/download/apk-debug-<运行号>/app-debug.apk
 ```
 
-本次已发布的版本：**`apk-debug-16`**
+本次已发布的版本：**`apk-debug-17`**
 
 ```powershell
 # 直接下载到本机
-Invoke-WebRequest "https://github.com/WengHosea/word-atlas/releases/download/apk-debug-16/app-debug.apk" -OutFile D:\Downloads\app-debug.apk
+Invoke-WebRequest "https://github.com/WengHosea/word-atlas/releases/download/apk-debug-17/app-debug.apk" -OutFile D:\Downloads\app-debug.apk
 ```
 
 也可以在 <https://github.com/WengHosea/word-atlas/releases> 页面点击 `app-debug.apk` 下载。
@@ -233,6 +233,22 @@ adb shell "cd /sdcard/Android/data/com.haoxin.wordatlas/files/atlas && find . -n
 | `error: cannot find symbol ... DIRECTORY_DOWNLOAD` | android-36 的 stub jar 里没有暴露 `Environment.DIRECTORY_DOWNLOAD` 常量 | 改用字面量 `"Download"` |
 | `signingConfigs.debugFixed` 找不到 | `signingConfigs` 块声明在 `buildTypes` 之后，Gradle 求值时还没建好 | 把 `signingConfigs` 移到 `buildTypes` 之前 |
 | CI 里找不到 keystore | 仓库用了 sparse-checkout，`android/app/` 下的二进制文件没被检出 | keystore 挪到仓库根目录 `android-debug.keystore`，并加了显式校验步骤 |
+
+### 5.4 装完新版还是「没图没声」（已修复）
+
+| 现象 | 根因 | 修复 |
+| --- | --- | --- |
+| 解压到一半 App 被系统杀掉，之后再打开永远「没图没声」 | 旧代码用 `index.json` 判断「媒体包是否就绪」。但 `index.json` 是压缩包里的**第 2 个条目**，解压刚开始它就落盘了。于是中断的解压被误判成「已完成」，App 从此再也不会解压剩下的 37,574 个文件 | 新增 `AtlasExtractor`，全部文件解完才写 `.atlas-ready` 标记文件；就绪判定只看这个标记 |
+| 解压中断后必须从头再来 | 旧代码每次都重写所有文件 | `AtlasExtractor` 会跳过已存在且大小一致的文件，**断点续传**。中途退出后再打开 App 会接着上次继续 |
+| App 启动后毫无反应，不知道在干嘛 | 解压状态没有暴露给前端 | 插件把进度写进 `files/diag.log`（手机可用 MTP 直接读取），前端启动时显示解压进度页 |
+
+**排查手机上的真实日志**（不需要 adb）：把手机上的
+`Android/data/com.haoxin.wordatlas/files/diag.log` 拉到电脑上，就能看到 App
+启动后的每一步：有没有找到 `atlas.zip`、解了多少个文件、有没有异常堆栈。
+
+**手动重置媒体包状态**（只在确认要重新解压时用）：删掉
+`Android/data/com.haoxin.wordatlas/files/atlas/` 目录下的 `.atlas-ready`
+文件，App 下次启动就会重新解压（已解出的文件会跳过，所以只会补齐缺的部分）。
 
 ## 六、后续可做的增强
 

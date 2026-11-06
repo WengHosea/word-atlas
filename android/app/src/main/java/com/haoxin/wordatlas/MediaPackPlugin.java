@@ -98,6 +98,7 @@ public class MediaPackPlugin extends Plugin {
         for (File f : packCandidates()) {
             if (f.exists() && f.length() > 0) return f;
         }
+        return null;
     }
 
     // ---------------------------------------------------------------- log ---
