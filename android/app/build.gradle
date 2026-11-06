@@ -16,6 +16,20 @@ android {
             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    // A checked-in debug keystore. Its only job is to keep the debug signing
+    // key stable across builds so upgrades do not wipe the app's data folder.
+    // It must be declared before buildTypes, because the buildTypes block
+    // resolves signingConfigs.debugFixed while it is being evaluated.
+    signingConfigs {
+        debugFixed {
+            // The keystore lives at the repository root so the CI
+            // sparse-checkout pattern (/*) always picks it up.
+            storeFile file('../../android-debug.keystore')
+            storePassword 'wordatlas'
+            keyAlias 'wordatlas'
+            keyPassword 'wordatlas'
+        }
+    }
     buildTypes {
         // A stable debug signature is essential: without it every CI build
         // produces a differently signed APK, Android treats it as a different
@@ -32,18 +46,6 @@ android {
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_21
         targetCompatibility JavaVersion.VERSION_21
-    }
-    // A checked-in debug keystore. Its only job is to keep the debug signing
-    // key stable across builds so upgrades do not wipe the app's data folder.
-    signingConfigs {
-        debugFixed {
-            // Kept at the repository root so the CI sparse-checkout pattern
-            // (/*) always picks it up.
-            storeFile rootProject.file('android-debug.keystore')
-            storePassword 'wordatlas'
-            keyAlias 'wordatlas'
-            keyPassword 'wordatlas'
-        }
     }
 }
 
