@@ -36,7 +36,7 @@
 
 ### 1.2 等待构建完成
 
-![Actions 运行状态](../docs/actions-run-v10.png)
+![Actions 运行状态](../docs/actions-run-v18.png)
 
 页面顶部 **Status** 变成绿色的 `Success` 即成功；红色 `Failure` 时点开失败步骤，
 右侧展开日志能看到具体报错。
@@ -53,16 +53,16 @@
 https://github.com/WengHosea/word-atlas/releases/download/apk-debug-<运行号>/app-debug.apk
 ```
 
-本次已发布的版本：**`apk-debug-17`**
+本次已发布的版本：**`apk-debug-18`**（对应提交 `9db18b4`）
 
 ```powershell
 # 直接下载到本机
-Invoke-WebRequest "https://github.com/WengHosea/word-atlas/releases/download/apk-debug-17/app-debug.apk" -OutFile D:\Downloads\app-debug.apk
+Invoke-WebRequest "https://github.com/WengHosea/word-atlas/releases/download/apk-debug-18/app-debug.apk" -OutFile D:\Downloads\app-debug.apk
 ```
 
 也可以在 <https://github.com/WengHosea/word-atlas/releases> 页面点击 `app-debug.apk` 下载。
 
-![产物下载](../docs/releases.png)
+![产物下载](../docs/releases-v18.png)
 
 **方式 B · Actions Artifacts**
 
@@ -151,6 +151,29 @@ node scripts/pack-atlas-zip.mjs D:\Downloads\atlas.zip
 弹窗提示「媒体包已就绪：37,576 个文件」即成功。
 
 > 解压完可以删掉手机里的 `atlas.zip`，释放 616 MB 空间。
+
+**第 4 步 · 确认解压成功（可选但强烈建议）**
+
+App 首次启动时，首页会显示一个**全屏解压进度页**，形如
+`正在解压媒体包 12,000/37,576（180 MB）`。等进度条走满、页面自动跳回
+首页，就说明 37,576 个文件全部落盘了。此时任意进入一个单词，
+**插画**和**英/美发音**都会正常出现。
+
+如果首页没有进度页、而是直接进了内容，说明媒体包已经是解压完成状态，
+直接去任意单词页验证即可。
+
+**万一 App 被系统杀掉 / 手动退出怎么办？**
+
+不用重来。再次打开 App 会自动**断点续传**：已经解压好的文件会被跳过，
+只补齐缺的部分。在「我的 → 离线媒体包」里可以看到当前状态。
+
+**想确认设备端到底发生了什么？**
+
+解压过程每一步都会写进
+`Android/data/com.haoxin.wordatlas/files/diag.log`。
+用数据线把手机接上电脑，直接从 MTP 通道把这个文件拷到电脑打开即可
+（Windows 资源管理器看不到 `Android/data` 时，可以用仓库里的
+`scripts/mphone.ps1` 之类的 MTP 脚本列目录）。
 
 ### 3.1 用 adb 一键推送（推荐）
 
