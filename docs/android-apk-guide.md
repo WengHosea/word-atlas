@@ -53,11 +53,11 @@
 https://github.com/WengHosea/word-atlas/releases/download/apk-debug-<运行号>/app-debug.apk
 ```
 
-本次已发布的版本：**`apk-debug-10`**
+本次已发布的版本：**`apk-debug-16`**
 
 ```powershell
 # 直接下载到本机
-Invoke-WebRequest "https://github.com/WengHosea/word-atlas/releases/download/apk-debug-10/app-debug.apk" -OutFile D:\Downloads\app-debug.apk
+Invoke-WebRequest "https://github.com/WengHosea/word-atlas/releases/download/apk-debug-16/app-debug.apk" -OutFile D:\Downloads\app-debug.apk
 ```
 
 也可以在 <https://github.com/WengHosea/word-atlas/releases> 页面点击 `app-debug.apk` 下载。
@@ -214,6 +214,25 @@ adb shell "cd /sdcard/Android/data/com.haoxin.wordatlas/files/atlas && find . -n
 | `error: invalid source release: 21` | Capacitor 8 的 android 库以 source/target 21 编译，JDK 17 不够 | 改用 Temurin JDK 21，并在 `app/build.gradle` 显式声明 `JavaVersion.VERSION_21` |
 | `./gradlew: Permission denied` | git 在 Windows 上检出时丢了可执行位 | 构建步骤先 `chmod +x gradlew` |
 | `gh: Resource not accessible by integration` | 默认 `GITHUB_TOKEN` 没有 `contents: write`，无法建 Release | 在 job 上加 `permissions: contents: write` |
+
+### 5.2 媒体包反复丢失 / 换版后没图没声（已修复）
+
+| 现象 | 根因 | 修复 |
+| --- | --- | --- |
+| 装完新版 APK 后 App 里图和声音全没了 | 每次 CI 构建的 debug 签名都不同，Android 判定为「另一个应用」→ 卸载旧版 → **连同 `files/` 里的媒体包一起清空** | 仓库内置固定 debug keystore（`android-debug.keystore`），`build.gradle` 里 `signingConfigs.debugFixed` 固定签名。以后升级不再清数据 |
+| 第一次启动 App 卡住不动 / ANR | 解压 37,576 个文件跑在 UI 线程上 | `MediaPackPlugin` 改用单线程 `ExecutorService` 解压，主线程只负责通知前端 |
+| 升级后又找不到 `atlas.zip` | 媒体包放在应用私有目录，重装即被清空 | 插件按顺序查找：应用私有目录 → `Download/word-atlas/` → `Download/`；媒体包放在 `Download` 下可以跨版本存活 |
+
+> 提示：即使现在签名固定了，也建议把 `atlas.zip` 放在
+> `内部存储/Download/word-atlas/atlas.zip`。这样以后随便重装 App 都不用再推 616 MB。
+
+### 5.3 云端构建踩过的坑（补充）
+
+| 报错 | 根因 | 修复 |
+| --- | --- | --- |
+| `error: cannot find symbol ... DIRECTORY_DOWNLOAD` | android-36 的 stub jar 里没有暴露 `Environment.DIRECTORY_DOWNLOAD` 常量 | 改用字面量 `"Download"` |
+| `signingConfigs.debugFixed` 找不到 | `signingConfigs` 块声明在 `buildTypes` 之后，Gradle 求值时还没建好 | 把 `signingConfigs` 移到 `buildTypes` 之前 |
+| CI 里找不到 keystore | 仓库用了 sparse-checkout，`android/app/` 下的二进制文件没被检出 | keystore 挪到仓库根目录 `android-debug.keystore`，并加了显式校验步骤 |
 
 ## 六、后续可做的增强
 

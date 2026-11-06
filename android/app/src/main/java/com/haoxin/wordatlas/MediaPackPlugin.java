@@ -12,12 +12,14 @@ import com.getcapacitor.annotation.CapacitorPlugin;
 
 import java.io.File;
 import java.io.FileOutputStream;
-import java.io.InputStream;
 import java.io.OutputStream;
+import java.io.PrintWriter;
+import java.io.StringWriter;
+import java.text.SimpleDateFormat;
+import java.util.Date;
+import java.util.Locale;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.zip.ZipEntry;
-import java.util.zip.ZipFile;
 
 /**
  * Imports the offline media pack.
@@ -25,6 +27,18 @@ import java.util.zip.ZipFile;
  * The pack is shipped as a single zip because pushing 37k small files over
  * MTP is painfully slow. The app unpacks it into its own external files
  * directory, which is the only place it can write without extra permissions.
+ *
+ * Two hard-won rules are baked in here:
+ *
+ - "Is the pack ready?" must never be answered by looking for `index.json`.
+   That file is the *second* entry of the archive, so it lands on disk long
+   before the 37k media files do. An interrupted extraction would look
+   "complete" forever and the app would never repair itself.
+   {@link AtlasExtractor#isReady(File)} uses a marker file instead.
+ - Every step is appended to a log file inside the app's own external files
+   directory, because a phone that cannot be reached by adb can still be
+   inspected over MTP. `files/diag.log` is the only window into what the app
+   is doing on the device.
  */
 @CapacitorPlugin(name = "MediaPack")
 public class MediaPackPlugin extends Plugin {
@@ -34,15 +48,20 @@ public class MediaPackPlugin extends Plugin {
     private final ExecutorService worker = Executors.newSingleThreadExecutor();
 
     /** Name of the media pack archive, without any directory part. */
-    private static final String PACK_NAME = "atlas.zip";
+    static final String PACK_NAME = "atlas.zip";
+
+    /** Where the unpacked media lives. */
+    static final String TARGET_NAME = "atlas";
+
+    /** Name of the diagnostic log inside the app's external files dir. */
+    static final String LOG_NAME = "diag.log";
 
     /**
      * Candidate locations for the media pack archive, most persistent first.
      *
-     * The app-private folder is wiped whenever the app is reinstalled (a new
-     * build with a different debug signature counts as a different app), so
-     * the shared Download folder is checked first: a pack parked there
-     * survives every upgrade and only has to be pushed once.
+     * The app-private folder is wiped whenever the app is reinstalled with a
+     * different signature (the debug signature is now pinned, so this should
+     * not happen anymore), so the shared Download folder is also checked.
      */
     private File[] packCandidates() {
         // "Download" is spelled out instead of using Environment.DIRECTORY_DOWNLOAD,
@@ -60,47 +79,86 @@ public class MediaPackPlugin extends Plugin {
         };
     }
 
+    /** The directory the media is unpacked into. */
+    private File targetDir() {
+        File dir = getContext().getExternalFilesDir(null);
+        if (dir == null) dir = getContext().getFilesDir();
+        return new File(dir, TARGET_NAME);
+    }
+
+    /** The directory the diagnostic log is written to. */
+    private File logDir() {
+        File dir = getContext().getExternalFilesDir(null);
+        if (dir == null) dir = getContext().getFilesDir();
+        return dir;
+    }
+
     /** First existing pack archive, or null when none was pushed. */
     private File findPack() {
         for (File f : packCandidates()) {
             if (f.exists() && f.length() > 0) return f;
         }
-        return null;
     }
 
-    /**
-     * Unpack automatically on startup: the pack is pushed to the app's own
-     * folder over MTP, so the user only has to open the app once.
-     */
-    @Override
-    public void load() {
-        // Unpacking 37k files takes minutes, so it must never run on the UI
-        // thread or the app will freeze / hit an ANR.
-        worker.execute(() -> {
-            try {
-                File target = new File(getContext().getExternalFilesDir(null), "atlas");
-                if (target.isDirectory() && new File(target, "index.json").exists()) {
-                    emit(packInfo(true, 0, 0));
-                    return;
-                }
-                File zip = findPack();
-                if (zip == null) return;
-                emit(packInfo(false, 0, 0));
-                JSObject res = unpack(zip, target);
-                emit(packInfo(true, res.getInt("files"), res.getLong("bytes")));
-            } catch (Exception e) {
-                emit(packInfo(false, 0, 0));
+    // ---------------------------------------------------------------- log ---
+
+    /** Append one line to the on-device log. Never throws. */
+    private void log(String message) {
+        try {
+            String stamp = new SimpleDateFormat("MM-dd HH:mm:ss", Locale.US).format(new Date());
+            File out = new File(logDir(), LOG_NAME);
+            try (OutputStream os = new FileOutputStream(out, true)) {
+                os.write((stamp + "  " + message + "\n").getBytes("UTF-8"));
             }
-        });
+        } catch (Exception ignored) {
+            /* logging must never break the app */
+        }
     }
 
-    private JSObject packInfo(boolean ok, int files, long bytes) {
+    /** Append a stack trace to the on-device log. Never throws. */
+    private void logError(String where, Throwable t) {
+        StringWriter sw = new StringWriter();
+        t.printStackTrace(new PrintWriter(sw));
+        log("ERROR in " + where + ": " + t + "\n" + sw);
+    }
+
+    // ------------------------------------------------------------- state ---
+
+    /** Snapshot of the pack state, shared by `status` and the events. */
+    private JSObject state() {
+        File target = targetDir();
+        File zip = findPack();
         JSObject out = new JSObject();
-        out.put("ok", ok);
-        out.put("files", files);
-        out.put("bytes", bytes);
-        out.put("path", new File(getContext().getExternalFilesDir(null), "atlas").getAbsolutePath());
+        out.put("ready", AtlasExtractor.isReady(target));
+        out.put("present", target.isDirectory());
+        out.put("packFound", zip != null);
+        out.put("packPath", zip == null ? "" : zip.getAbsolutePath());
+        out.put("packBytes", zip == null ? 0L : zip.length());
+        out.put("path", target.getAbsolutePath());
+        out.put("logPath", new File(logDir(), LOG_NAME).getAbsolutePath());
+        out.put("files", countFiles(target));
         return out;
+    }
+
+    /** Rough count of files in the unpacked directory (bounded walk). */
+    private int countFiles(File dir) {
+        if (dir == null || !dir.isDirectory()) return 0;
+        int[] n = { 0 };
+        walk(dir, n, 0);
+        return n[0];
+    }
+
+    private void walk(File dir, int[] n, int depth) {
+        if (depth > 4 || n[0] > 200000) return;
+        File[] kids = dir.listFiles();
+        if (kids == null) return;
+        for (File k : kids) {
+            if (k.isDirectory()) {
+                walk(k, n, depth + 1);
+            } else if (!k.getName().equals(AtlasExtractor.READY_MARKER)) {
+                n[0]++;
+            }
+        }
     }
 
     /** Notify the web layer; listeners must be called on the main thread. */
@@ -108,8 +166,56 @@ public class MediaPackPlugin extends Plugin {
         main.post(() -> notifyListeners("mediaPack", payload));
     }
 
+    /** Resolve a plugin call; the webview must be touched on the main thread. */
+    private void resolve(PluginCall call, JSObject value) {
+        main.post(() -> call.resolve(value));
+    }
+
+    private void reject(PluginCall call, String message) {
+        main.post(() -> call.reject(message));
+    }
+
+    // -------------------------------------------------------------- load ---
+
     /**
-     * Unpack `atlas.zip` from the app's files dir into `atlas/`.
+     * Unpack automatically on startup: the pack is pushed to the app's own
+     * folder over MTP, so the user only has to open the app once.
+     */
+    @Override
+    public void load() {
+        log("=== app start ===");
+        worker.execute(() -> {
+            try {
+                File target = targetDir();
+                log("target=" + target.getAbsolutePath());
+                if (AtlasExtractor.isReady(target)) {
+                    log("pack already ready, nothing to do");
+                    emit(state());
+                    return;
+                }
+                File zip = findPack();
+                if (zip == null) {
+                    log("NO PACK FOUND. candidates:");
+                    for (File f : packCandidates()) {
+                        log("  " + f.getAbsolutePath() + " exists=" + f.exists());
+                    }
+                    emit(state());
+                    return;
+                }
+                log("unpacking " + zip.getAbsolutePath() + " (" + zip.length() + " bytes)");
+                unpackInto(zip, target);
+            } catch (Throwable t) {
+                logError("load", t);
+                emit(state());
+            }
+        });
+    }
+
+    // ----------------------------------------------------------- methods ---
+
+    /**
+     * Unpack `atlas.zip` into the target directory. Safe to call repeatedly:
+     * an interrupted run continues where it stopped.
      */
     @PluginMethod
     public void unpack(PluginCall call) {
@@ -121,103 +227,66 @@ public class MediaPackPlugin extends Plugin {
                     // The caller may point at a specific file name.
                     zip = new File(getContext().getFilesDir(), name);
                 }
-                if (!zip.exists()) {
-                    call.reject("找不到压缩包 " + name + "，请先把它放到 Download/word-atlas/ 或应用私有目录");
+                if (!zip.exists() || zip.length() == 0) {
+                    log("unpack requested but pack not found: " + name);
+                    reject(call, "找不到压缩包 " + name + "，请先把它放到 Download/word-atlas/ 或应用私有目录");
                     return;
                 }
-
-                JSObject result = unpack(zip, new File(getContext().getExternalFilesDir(null), "atlas"));
-                call.resolve(result);
-            } catch (Exception e) {
-                call.reject("解压失败: " + e.getMessage());
+                log("manual unpack of " + zip.getAbsolutePath());
+                AtlasExtractor.Result r = unpackInto(zip, targetDir());
+                JSObject out = state();
+                out.put("written", r.written);
+                out.put("total", r.total);
+                out.put("bytes", r.bytes);
+                resolve(call, out);
+            } catch (Throwable t) {
+                logError("unpack", t);
+                reject(call, "解压失败: " + t.getMessage());
             }
         });
     }
 
-    /**
-     * Unpack a zip into a target directory, returning file/byte counts.
-     *
-     * The zip is usually produced from the `public/atlas` folder, so every
-     * entry starts with `atlas/`. That prefix is stripped so the files land
-     * directly in the target folder instead of `target/atlas/...`.
-     */
-    private JSObject unpack(File zip, File target) throws Exception {
-        int files = 0;
-        long bytes = 0;
-        try (ZipFile zf = new ZipFile(zip)) {
-            String prefix = detectPrefix(zf);
-            java.util.Enumeration<? extends ZipEntry> entries = zf.entries();
-            while (entries.hasMoreElements()) {
-                ZipEntry entry = entries.nextElement();
-                String name = entry.getName();
-                if (!prefix.isEmpty() && name.startsWith(prefix)) {
-                    name = name.substring(prefix.length());
-                }
-                if (name.isEmpty()) {
-                    continue;
-                }
-                File out = new File(target, name);
-                // Guard against zip-slip: the entry name must stay under target.
-                if (!out.getCanonicalPath().startsWith(target.getCanonicalPath() + File.separator)) {
-                    continue;
-                }
-                if (entry.isDirectory()) {
-                    out.mkdirs();
-                    continue;
-                }
-                out.getParentFile().mkdirs();
-                try (
-                    InputStream in = zf.getInputStream(entry);
-                    OutputStream os = new FileOutputStream(out)
-                ) {
-                    byte[] buf = new byte[64 * 1024];
-                    int n;
-                    while ((n = in.read(buf)) > 0) {
-                        os.write(buf, 0, n);
-                        bytes += n;
-                    }
-                }
-                files++;
-            }
-        }
-        JSObject out = new JSObject();
-        out.put("files", files);
-        out.put("bytes", bytes);
-        out.put("path", target.getAbsolutePath());
-        return out;
-    }
-
-    /** Return the shared top-level folder of the archive, e.g. "atlas/". */
-    private String detectPrefix(ZipFile zf) {
-        java.util.Enumeration<? extends ZipEntry> entries = zf.entries();
-        String first = null;
-        while (entries.hasMoreElements() && first == null) {
-            ZipEntry e = entries.nextElement();
-            if (e.isDirectory()) continue;
-            first = e.getName();
-            break;
-        }
-        if (first == null) return "";
-        int slash = first.indexOf('/');
-        if (slash <= 0) return "";
-        String candidate = first.substring(0, slash + 1);
-        // Only strip it when every entry shares it.
-        entries = zf.entries();
-        while (entries.hasMoreElements()) {
-            ZipEntry e = entries.nextElement();
-            if (e.isDirectory()) continue;
-            if (!e.getName().startsWith(candidate)) return "";
-        }
-        return candidate;
-    }
-
-    /** Report whether a media pack is present in the app's files dir. */
+    /** Report whether a media pack is present and completely unpacked. */
     @PluginMethod
     public void status(PluginCall call) {
-        File target = new File(getContext().getExternalFilesDir(null), "atlas");
-        JSObject out = new JSObject();
-        out.put("present", target.isDirectory() && new File(target, "index.json").exists());
-        out.put("path", target.getAbsolutePath());
-        call.resolve(out);
+        worker.execute(() -> {
+            try {
+                resolve(call, state());
+            } catch (Throwable t) {
+                logError("status", t);
+                reject(call, String.valueOf(t.getMessage()));
+            }
+        });
+    }
+
+    // ---------------------------------------------------------- internals ---
+
+    /** Unpack a zip into the target directory and mark it ready afterwards. */
+    private AtlasExtractor.Result unpackInto(File zip, File target) throws Exception {
+        long started = System.currentTimeMillis();
+        emit(state());
+        AtlasExtractor.Result r = AtlasExtractor.extract(zip, target, (files, total, bytes) -> {
+            JSObject p = state();
+            p.put("files", files);
+            p.put("total", total);
+            p.put("bytes", bytes);
+            p.put("phase", "unpacking");
+            emit(p);
+            if (files % 5000 == 0) {
+                log("  progress " + files + "/" + total + " (" + (bytes / 1048576) + " MB)");
+            }
+        });
+        if (r.written == 0 && AtlasExtractor.isReady(target)) {
+            log("nothing new to write, pack stays ready");
+        } else {
+            AtlasExtractor.markReady(target, r);
+        }
+        log("unpack finished: files=" + r.files + " written=" + r.written
+            + " bytes=" + r.bytes + " in " + (System.currentTimeMillis() - started) + " ms"
+            + " ready=" + AtlasExtractor.isReady(target));
+        JSObject p = state();
+        p.put("phase", "done");
+        emit(p);
+        return r;
     }
 }

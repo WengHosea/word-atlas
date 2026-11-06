@@ -6,6 +6,7 @@ import { dayKey, exportBackup, importBackup, resetProgress, store, useStore, typ
 import { toast } from "../ui/Toast";
 import { isNative, MEDIA_ROOTS, mediaRootPath, setMediaRoot } from "../utils/assetResolver";
 import { mediaPack } from "../utils/mediaPack";
+import { runUnpack, usePackProgress } from "../utils/packBootstrap";
 import { readProgressBackup } from "../utils/progressBackup";
 import { streakOf } from "./Today";
 
@@ -15,6 +16,7 @@ export function Me({ privateAvailable }: { privateAvailable: boolean }) {
   const settings = useStore((s) => s.settings);
   const saveError = useStore((s) => s.saveError);
   const file = useRef<HTMLInputElement>(null);
+  const pack = usePackProgress();
 
   const stats = useMemo(() => {
     const cards = Object.values(progress.cards);
@@ -64,8 +66,9 @@ export function Me({ privateAvailable }: { privateAvailable: boolean }) {
   const unpackPack = async () => {
     try {
       toast("正在解压媒体包，请勿退出…");
-      const r = await mediaPack.unpack();
-      toast(`媒体包已就绪：${r.files.toLocaleString()} 个文件`, "ok");
+      await runUnpack();
+      const s = await mediaPack.status();
+      toast(s.ready ? `媒体包已就绪：${s.files.toLocaleString()} 个文件` : "解压未完成，请保持应用在前台再试一次", s.ready ? "ok" : "warn");
     } catch (e) {
       toast(String(e instanceof Error ? e.message : e), "warn");
     }
@@ -236,6 +239,13 @@ export function Me({ privateAvailable }: { privateAvailable: boolean }) {
               <p className="muted">
                 当前路径：<code>{mediaRootPath()}</code>
               </p>
+              <p className={pack.phase === "ready" ? "muted" : "warn-text"}>
+                {pack.phase === "ready"
+                  ? `媒体包已就绪（${pack.files.toLocaleString()} 个文件），图片与发音可用。`
+                  : pack.phase === "unpacking"
+                    ? pack.message
+                    : "媒体包尚未就绪，图片与发音可能无法显示。"}
+              </p>
               <div className="segmented">
                 {MEDIA_ROOTS.map((r) => (
                   <button key={r.id} className={settings.mediaRoot === r.id ? "is-on" : ""} onClick={() => pickRoot(r.id)}>
@@ -248,7 +258,7 @@ export function Me({ privateAvailable }: { privateAvailable: boolean }) {
                   <HardDriveDownload size={18} /> 从沙盒恢复备份
                 </button>
                 <button className="btn btn-ghost" onClick={unpackPack}>
-                  <Package size={18} /> 导入媒体包（atlas.zip）
+                  <Package size={18} /> {pack.phase === "ready" ? "重新解压媒体包" : "解压媒体包（atlas.zip）"}
                 </button>
               </div>
             </>

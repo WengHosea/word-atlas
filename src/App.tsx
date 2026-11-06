@@ -14,7 +14,8 @@ import { Practice } from "./pages/Practice";
 import { Today } from "./pages/Today";
 import { cue } from "./lib/sound";
 import { store, useStore } from "./store/store";
-import { getMediaRoot, initAssetResolver, warnIfMediaMissing } from "./utils/assetResolver";
+import { getMediaRoot, initAssetResolver, setNativeMediaPath, warnIfMediaMissing } from "./utils/assetResolver";
+import { ensureMediaPack, usePackProgress } from "./utils/packBootstrap";
 import { EntryView } from "./ui/EntryView";
 import { AmbienceController, AmbiencePicker } from "./ui/Ambience";
 import { Logo } from "./ui/Logo";
@@ -55,7 +56,15 @@ export default function App() {
       const root = getMediaRoot();
       if (store.get().settings.mediaRoot !== root) store.settings({ mediaRoot: root });
     });
-    void warnIfMediaMissing();
+    // The media pack has to be fully unpacked before images and audio show
+    // up. The native side resumes an interrupted extraction, so this is safe
+    // to call on every start.
+    void ensureMediaPack()
+      .then((s) => {
+        if (s?.path) setNativeMediaPath(s.path);
+        if (s && !s.ready) void warnIfMediaMissing();
+      })
+      .catch(() => void warnIfMediaMissing());
     loadOpenAtlas().then(
       (a) => {
         setOpen(a);
@@ -83,11 +92,14 @@ export default function App() {
         </button>
       </div>
     );
-  if (!atlas)
+  const pack = usePackProgress();
+
+  if (!atlas || pack.phase === "unpacking" || pack.phase === "checking")
     return (
       <div className="boot" aria-busy="true">
         <Logo />
         <span className="spinner" />
+        {pack.message && <p className="muted">{pack.message}</p>}
       </div>
     );
   return (

@@ -1,7 +1,7 @@
 import { Capacitor } from "@capacitor/core";
-import { Directory, Filesystem } from "@capacitor/filesystem";
 import { Preferences } from "@capacitor/preferences";
 import { toast } from "../ui/Toast";
+import { mediaPack } from "./mediaPack";
 
 /**
  * Where the offline media pack lives on the phone.
@@ -53,12 +53,26 @@ export const isMobile = (): boolean => isNative() || (typeof window !== "undefin
 
 let mediaRoot: MediaRoot = "app";
 
+/**
+ * The real location of the unpacked media on the device.
+ *
+ * The native plugin reports the absolute path it unpacked into, which is
+ * the only trustworthy answer: the app-private folder and the shared
+ * Download folder are both valid places for the media to live.
+ */
+let nativePath = MEDIA_ROOTS[0].path;
+
+/** Remember where the native plugin actually put the media. */
+export const setNativeMediaPath = (path: string): void => {
+  if (path) nativePath = path;
+};
+
 export const getMediaRoot = (): MediaRoot => mediaRoot;
 
 const rootInfo = (root: MediaRoot): MediaRootInfo => MEDIA_ROOTS.find((r) => r.id === root) ?? MEDIA_ROOTS[0];
 
 /** Absolute path of the current media pack. */
-export const mediaRootPath = (): string => rootInfo(mediaRoot).path;
+export const mediaRootPath = (): string => (isNative() ? nativePath : rootInfo(mediaRoot).path);
 
 /** Load the saved media-pack location. */
 export async function initAssetResolver(): Promise<void> {
@@ -104,19 +118,20 @@ export function getAssetUrl(path: string): string {
 /** True when the media pack folder exists on the phone. */
 export async function hasMediaPack(): Promise<boolean> {
   if (!isNative()) return true;
-  const info = rootInfo(mediaRoot);
   try {
-    const res = await Filesystem.stat({
-      path: info.relative,
-      directory: mediaRoot === "app" ? Directory.External : Directory.ExternalStorage,
-    });
-    return res.type === "directory";
+    // The native plugin knows whether the pack was unpacked completely.
+    // Looking for the directory alone is not enough: a half-finished
+    // extraction also creates the directory, and it would look fine.
+    const s = await mediaPack.status();
+    if (s.path) setNativeMediaPath(s.path);
+    return s.ready;
   } catch {
     return false;
   }
 }
 
-export const MISSING_PACK_MESSAGE = `未检测到离线媒体包，请将 atlas 媒体目录放入 ${MEDIA_ROOTS[0].path}/`;
+export const MISSING_PACK_MESSAGE =
+  "未检测到完整的离线媒体包。请把 atlas.zip 放到手机 Download/word-atlas/ 或应用私有目录，然后在「我的 → 离线媒体包」里重新解压。";
 
 let warned = false;
 
