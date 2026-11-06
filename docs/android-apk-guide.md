@@ -36,7 +36,7 @@
 
 ### 1.2 等待构建完成
 
-![Actions 运行状态](../docs/actions-run-v18.png)
+![Actions 运行状态](../docs/actions-run-v20.png)
 
 页面顶部 **Status** 变成绿色的 `Success` 即成功；红色 `Failure` 时点开失败步骤，
 右侧展开日志能看到具体报错。
@@ -53,16 +53,18 @@
 https://github.com/WengHosea/word-atlas/releases/download/apk-debug-<运行号>/app-debug.apk
 ```
 
-本次已发布的版本：**`apk-debug-18`**（对应提交 `9db18b4`）
+本次已发布的版本：**`apk-debug-20`**（对应提交 `0d37f74`）
 
 ```powershell
 # 直接下载到本机
-Invoke-WebRequest "https://github.com/WengHosea/word-atlas/releases/download/apk-debug-18/app-debug.apk" -OutFile D:\Downloads\app-debug.apk
+Invoke-WebRequest "https://github.com/WengHosea/word-atlas/releases/download/apk-debug-20/app-debug.apk" -OutFile D:\Downloads\app-debug.apk
 ```
 
 也可以在 <https://github.com/WengHosea/word-atlas/releases> 页面点击 `app-debug.apk` 下载。
 
 ![产物下载](../docs/releases-v18.png)
+
+![Release 详情](../docs/release-20.png)
 
 **方式 B · Actions Artifacts**
 
@@ -72,6 +74,9 @@ Invoke-WebRequest "https://github.com/WengHosea/word-atlas/releases/download/apk
 > Artifacts 需要登录 GitHub 才有权限下载；Releases 方式不需要。
 
 ## 二、把 APK 装到手机上
+
+> 手机上按文件名排序，最新的那个才是要装的：`app-debug-v20.apk`。
+> 历史版本 `v10 / v11 / v16 / v18` 建议删掉，避免装错。
 
 1. 手机 **设置 → 其他设置 → 开发者选项** → 打开 **USB 调试**
 2. 用数据线连电脑，手机上弹出「允许 USB 调试」时点**允许**
@@ -217,6 +222,54 @@ adb shell "cd /sdcard/Android/data/com.haoxin.wordatlas/files/atlas && find . -n
 若插画显示占位图、顶部弹出「未检测到离线媒体包」，
 说明媒体包路径不对，回到「我的」页切换媒体根路径，或重新执行 3.1。
 
+### 4.1 装好之后应该长这样
+
+今日计划页（插画卡片 + 发音按钮都在）：
+
+![今日计划](../docs/app-today-mobile.jpg)
+
+单词详情页（插画 + 英/美两个发音按钮 + 例句）：
+
+![单词详情](../docs/app-word-mobile.jpg)
+
+如果这两个页面的插画位置是空白或灰色占位块、点喇叭没声音，
+那就是媒体包没解压完，回到 3.0 的第 3 步重开 App 让它续传。
+
+### 4.2 三种状态，秒判是不是装好了
+
+| App 表现 | 含义 | 该做什么 |
+| --- | --- | --- |
+| 启动时出现全屏进度页 `正在解压媒体包 12,000/37,576` | 正在解压，等它走完 | 什么都不用做，耐心等几分钟 |
+| 启动时直接进首页，单词页有图有声 | 一切正常 | — |
+| 启动时直接进首页，但单词页没图没声 | 媒体包缺失或没解压完 | 确认 `atlas.zip` 在 `Download/` 或 App 私有目录，然后重开 App |
+
+### 4.3 用 `diag.log` 确证（不用 adb）
+
+App 每次启动都会把版本号、剩余空间、找到/没找到 `atlas.zip`、解压了多少文件
+写进 `Android/data/com.haoxin.wordatlas/files/diag.log`。
+
+用数据线连电脑，把手机接成 MTP 模式，然后用仓库里的 MTP 脚本列目录：
+
+```powershell
+# 列出 App 私有目录里的文件
+pwsh -File scripts\mphone.ps1 -PhonePath "内部存储/Android/data/com.haoxin.wordatlas/files"
+```
+
+看到 `diag.log` 就说明**新版 App 确实启动过**（旧版根本不写这个文件）；
+看不到就说明手机上跑的还是旧 APK，需要重新安装。
+
+`diag.log` 里出现这几行分别代表：
+
+```
+=== app start (sdk=33 version=1.0) ===   ← 新版启动
+free space = 8123456789 bytes            ← 剩余空间
+unpacking /sdcard/.../atlas.zip (646090503 bytes)
+  progress 5000/37576 (85 MB)            ← 解压进度
+unpack finished: files=37576 written=37576 ... ready=true
+```
+
+看到 `NO PACK FOUND` 就说明 `atlas.zip` 没放到 App 能看到的位置。
+
 ## 五、常见问题
 
 | 现象 | 原因与处理 |
@@ -272,6 +325,48 @@ adb shell "cd /sdcard/Android/data/com.haoxin.wordatlas/files/atlas && find . -n
 **手动重置媒体包状态**（只在确认要重新解压时用）：删掉
 `Android/data/com.haoxin.wordatlas/files/atlas/` 目录下的 `.atlas-ready`
 文件，App 下次启动就会重新解压（已解出的文件会跳过，所以只会补齐缺的部分）。
+
+### 5.5 build 20：加装了「版本印记」和空间检查
+
+排查「装完还是没图没声」时，最难的是分不清**手机里跑的是哪一版**。
+build 20 起，App 每次启动都会：
+
+| 文件 | 作用 |
+| --- | --- |
+| `files/version.txt` | 记录 SDK 版本、versionName、启动时间戳 —— 证明**新版真的被打开过** |
+| `files/diag.log` | 追加版启动横幅、剩余空间、找到的包路径、解压进度、完成标记 |
+
+`diag.log` 的启动横幅长这样：
+
+```
+=== app start (sdk=33 version=1.0) ===
+free space = 8123456789 bytes
+```
+
+只要 `version.txt` 存在，就说明手机上是 build 20 或更新的版本；
+如果它不存在，而用户坚称装了最新，那就是**装错了包**
+（文件名带 `-v10/-v11/-v16/-v18/-v20` 后缀的是历史版本，最新的是 `-v20`）。
+
+另外 build 20 会在解压前检查剩余空间：
+
+```
+WARNING: not enough free space (123456789 bytes) for a 646090503 byte archive
+```
+
+媒体包解压后约 660 MB，加上 zip 本身，**手机上需要留出至少 1.4 GB**。
+空间不足时解压会中途失败，这是「有词条、没图没声」的另一个常见原因。
+
+### 5.6 一句话排查流程
+
+1. 手机 `Download/` 里有没有 `app-debug-v20.apk`？（最新）
+2. `Android/data/com.haoxin.wordatlas/files/` 里有没有 `version.txt`？
+   - 没有 → 装的是旧包，去装 `-v20`
+   - 有 → 继续
+3. 有没有 `diag.log`？打开看 `NO PACK FOUND` 还是 `unpacking ...`
+   - `NO PACK FOUND` → `atlas.zip` 位置不对，放到 `Download/` 或 App 私有目录
+   - `unpacking` → 等它解完，或中途被杀（下次启动会自动续传）
+   - `unpack finished ... ready=true` → 包没问题，检查「我的」页的媒体根路径
+4. 手机剩余空间 ≥ 1.4 GB？
 
 ## 六、后续可做的增强
 
