@@ -24,22 +24,28 @@ function Find-MtpFolder {
   $shell = New-Object -ComObject Shell.Application
   $pc = $shell.Namespace(17)
   $segs = @($Path -split '/')
+
+  # Only look inside a phone's internal storage. Matching the path across every
+  # MTP device is unsafe: "Download" also exists under Baidu Netdisk's
+  # AutoUpdate folder, and files silently land on the PC instead of the phone.
+  $devices = @()
   foreach ($dev in $pc.Items()) {
-    try { $kids = $dev.GetFolder.Items() } catch { continue }
-    foreach ($k in $kids) {
-      try { $sub = $k.GetFolder.Items() } catch { continue }
-      foreach ($s in $sub) {
-        if ($s.Name -ne $segs[0]) { continue }
-        $cur = $s.GetFolder
-        $ok = $true
-        for ($i = 1; $i -lt $segs.Count; $i++) {
-          $m = $cur.Items() | Where-Object { $_.Name -eq $segs[$i] }
-          if (-not $m) { $ok = $false; break }
-          $cur = $m.GetFolder
-        }
-        if ($ok) { return $cur }
-      }
+    try {
+      $storage = $dev.GetFolder.Items() | Where-Object { $_.Name -eq '内部存储' }
+    } catch { continue }
+    if ($storage) { $devices += $storage.GetFolder }
+  }
+
+  foreach ($root in $devices) {
+    $cur = $root
+    $ok = $true
+    foreach ($seg in $segs) {
+      if (-not $seg) { continue }
+      $m = $cur.Items() | Where-Object { $_.Name -eq $seg }
+      if (-not $m) { $ok = $false; break }
+      $cur = $m.GetFolder
     }
+    if ($ok) { return $cur }
   }
   return $null
 }

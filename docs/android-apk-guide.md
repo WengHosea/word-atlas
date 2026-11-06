@@ -78,6 +78,18 @@ Invoke-WebRequest "https://github.com/WengHosea/word-atlas/releases/download/apk
 3. 把 `app-debug.apk` 传到手机（数据线拷贝 / 微信文件传输助手均可）
 4. 点击安装。首次安装会提示「未知来源应用」，按提示允许即可
 
+也可以用 MTP 脚本直接推（无需 adb）：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/push-apk.ps1 -Apk D:\Downloads\app-debug.apk
+```
+
+推完在手机「文件 → Download」里就能看到它，文件名带 `-v10` 后缀的是最新版。
+
+> ⚠️ **坑**：MTP 脚本如果按目录名全局匹配 `Download`，会误命中本机的
+> 「百度网盘 → AutoUpdate → Download」，文件会传到电脑上，手机里根本找不到。
+> 仓库里的脚本已限定只在手机的「内部存储」下查找。
+
 也可以直接用 adb 安装：
 
 ```powershell
