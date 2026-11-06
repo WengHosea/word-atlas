@@ -2,6 +2,7 @@ package com.haoxin.wordatlas;
 
 import android.os.Handler;
 import android.os.Looper;
+import android.os.Environment;
 
 import com.getcapacitor.JSObject;
 import com.getcapacitor.Plugin;
@@ -14,6 +15,8 @@ import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
 
@@ -28,6 +31,40 @@ import java.util.zip.ZipFile;
 public class MediaPackPlugin extends Plugin {
 
     private final Handler main = new Handler(Looper.getMainLooper());
+    private final ExecutorService worker = Executors.newSingleThreadExecutor();
+
+    /** Name of the media pack archive, without any directory part. */
+    private static final String PACK_NAME = "atlas.zip";
+
+    /**
+     * Candidate locations for the media pack archive, most persistent first.
+     *
+     * The app-private folder is wiped whenever the app is reinstalled (a new
+     * build with a different debug signature counts as a different app), so
+     * the shared Download folder is checked first: a pack parked there
+     * survives every upgrade and only has to be pushed once.
+     */
+    private File[] packCandidates() {
+        File download = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOAD);
+        return new File[] {
+            // The app's own external files dir needs no permission at all, so
+            // it stays the primary location.
+            new File(getContext().getExternalFilesDir(null), PACK_NAME),
+            // Fallbacks live in the shared Download folder and need the
+            // all-files-access permission on Android 11+.
+            new File(download, "word-atlas/" + PACK_NAME),
+            new File(download, PACK_NAME),
+            new File(getContext().getFilesDir(), PACK_NAME),
+        };
+    }
+
+    /** First existing pack archive, or null when none was pushed. */
+    private File findPack() {
+        for (File f : packCandidates()) {
+            if (f.exists() && f.length() > 0) return f;
+        }
+        return null;
+    }
 
     /**
      * Unpack automatically on startup: the pack is pushed to the app's own
@@ -35,16 +72,17 @@ public class MediaPackPlugin extends Plugin {
      */
     @Override
     public void load() {
-        main.post(() -> {
+        // Unpacking 37k files takes minutes, so it must never run on the UI
+        // thread or the app will freeze / hit an ANR.
+        worker.execute(() -> {
             try {
                 File target = new File(getContext().getExternalFilesDir(null), "atlas");
                 if (target.isDirectory() && new File(target, "index.json").exists()) {
                     notifyListeners("mediaPack", packInfo(true, 0, 0));
                     return;
                 }
-                File zip = new File(getContext().getExternalFilesDir(null), "atlas.zip");
-                if (!zip.exists()) zip = new File(getContext().getFilesDir(), "atlas.zip");
-                if (!zip.exists()) return;
+                File zip = findPack();
+                if (zip == null) return;
                 notifyListeners("mediaPack", packInfo(false, 0, 0));
                 JSObject res = unpack(zip, target);
                 notifyListeners("mediaPack", packInfo(true, res.getInt("files"), res.getLong("bytes")));
@@ -68,18 +106,16 @@ public class MediaPackPlugin extends Plugin {
      */
     @PluginMethod
     public void unpack(PluginCall call) {
-        String name = call.getString("file", "atlas.zip");
-        main.post(() -> {
+        String name = call.getString("file", PACK_NAME);
+        worker.execute(() -> {
             try {
-                File filesDir = getContext().getFilesDir();
-                File zip = new File(filesDir, name);
-                if (!zip.exists()) {
-                    // Fall back to the external files dir, which is where the
-                    // pack is normally pushed to over MTP.
-                    zip = new File(getContext().getExternalFilesDir(null), name);
+                File zip = findPack();
+                if (zip == null) {
+                    // The caller may point at a specific file name.
+                    zip = new File(getContext().getFilesDir(), name);
                 }
                 if (!zip.exists()) {
-                    call.reject("找不到压缩包 " + name);
+                    call.reject("找不到压缩包 " + name + "，请先把它放到 Download/word-atlas/ 或应用私有目录");
                     return;
                 }
 

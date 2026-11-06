@@ -17,6 +17,13 @@ android {
         }
     }
     buildTypes {
+        // A stable debug signature is essential: without it every CI build
+        // produces a differently signed APK, Android treats it as a different
+        // app, uninstalls the old one and wipes its data folder. That would
+        // delete the 600 MB media pack the user pushed to the device.
+        debug {
+            signingConfig signingConfigs.debugFixed
+        }
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
@@ -25,6 +32,16 @@ android {
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_21
         targetCompatibility JavaVersion.VERSION_21
+    }
+    // A checked-in debug keystore. Its only job is to keep the debug signing
+    // key stable across builds so upgrades do not wipe the app's data folder.
+    signingConfigs {
+        debugFixed {
+            storeFile file('word-atlas-debug.keystore')
+            storePassword 'wordatlas'
+            keyAlias 'wordatlas'
+            keyPassword 'wordatlas'
+        }
     }
 }
 

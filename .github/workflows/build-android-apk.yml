@@ -33,6 +33,14 @@ jobs:
             !/public/atlas/thumb/
             !/public/atlas/audio/
 
+      # The debug keystore must be present for the stable debug signing config
+      # in android/app/build.gradle. It is checked in on purpose: the point is
+      # to have the *same* signing key locally and in CI.
+      - name: Restore debug keystore
+        run: |
+          test -f android/app/word-atlas-debug.keystore \
+            || { echo "missing android/app/word-atlas-debug.keystore"; exit 1; }
+
       # Capacitor CLI 8 hard-requires Node >= 22, so Node 20 cannot be used here.
       - name: Setup Node.js 22
         uses: actions/setup-node@v4
