@@ -36,7 +36,7 @@
 
 ### 1.2 等待构建完成
 
-![Actions 运行状态](../docs/actions-run.png)
+![Actions 运行状态](../docs/actions-run-v10.png)
 
 页面顶部 **Status** 变成绿色的 `Success` 即成功；红色 `Failure` 时点开失败步骤，
 右侧展开日志能看到具体报错。
@@ -53,16 +53,16 @@
 https://github.com/WengHosea/word-atlas/releases/download/apk-debug-<运行号>/app-debug.apk
 ```
 
-本次已发布的版本：**`apk-debug-6`**
+本次已发布的版本：**`apk-debug-10`**
 
 ```powershell
 # 直接下载到本机
-Invoke-WebRequest "https://github.com/WengHosea/word-atlas/releases/download/apk-debug-6/app-debug.apk" -OutFile D:\Downloads\app-debug.apk
+Invoke-WebRequest "https://github.com/WengHosea/word-atlas/releases/download/apk-debug-10/app-debug.apk" -OutFile D:\Downloads\app-debug.apk
 ```
 
 也可以在 <https://github.com/WengHosea/word-atlas/releases> 页面点击 `app-debug.apk` 下载。
 
-![产物下载](../docs/actions-artifact.png)
+![产物下载](../docs/releases.png)
 
 **方式 B · Actions Artifacts**
 
@@ -97,6 +97,49 @@ public/atlas/
 └── audio/          ← 22,905 段音频 (366 MB)   ← 要推
 ```
 
+### 3.0 免 adb 路线：打成 zip，App 自己解压（推荐给普通用户）
+
+媒体包有 **37,576 个文件**。用 MTP / 资源管理器一个一个复制过去，实测速率只有
+**4.5 个文件/秒**，全部推完要 **2 小时 40 分钟**；而单个大文件传得飞快
+（100 MB 不到 2 分钟）。所以正确做法是**先压成一个 zip，再让 App 自己解压**。
+
+**第 1 步 · 在电脑上打包**
+
+```powershell
+cd <仓库目录>
+node scripts/pack-atlas-zip.mjs D:\Downloads\atlas.zip
+```
+
+输出约 **616 MB** 的 `atlas.zip`。
+
+**第 2 步 · 把 zip 放进手机的 App 目录**
+
+用数据线连电脑，手机上会弹出「允许访问文件」→ 选**传输文件 (MTP)**，
+然后把 `atlas.zip` 复制到：
+
+```
+/内部存储/Android/data/com.haoxin.wordatlas/files/atlas.zip
+```
+
+> Windows 资源管理器默认看不到 `Android/data`，用「文件」App 或任意 MTP
+> 工具都行；也可以直接用下面的命令行（Windows PowerShell）：
+
+```powershell
+# 一条命令推完（MTP 通道，无需 adb）
+.\scripts\push-atlas.ps1 -Zip D:\Downloads\atlas.zip
+```
+
+**第 3 步 · 打开 App**
+
+首次启动时 App 会自动解压 `atlas.zip` 到
+`/storage/emulated/0/Android/data/com.haoxin.wordatlas/files/atlas/`，
+大约需要 1–3 分钟（取决于手机存储速度）。解压完成后插画与音频即可正常显示。
+
+也可以在 **我的 → 导入媒体包（atlas.zip）** 手动触发一次，
+弹窗提示「媒体包已就绪：37,576 个文件」即成功。
+
+> 解压完可以删掉手机里的 `atlas.zip`，释放 616 MB 空间。
+
 ### 3.1 用 adb 一键推送（推荐）
 
 ```powershell
@@ -112,7 +155,7 @@ adb shell "cd /sdcard/Android/data/com.haoxin.wordatlas/files/atlas && find . -n
 
 > `npm run build:mobile` 结束时会自动打印上面这三行命令，可直接复制。
 
-### 3.2 不用 adb 的替代方案
+### 3.2 不用 adb 的替代方案（逐文件复制，较慢）
 
 手机连接 Wi-Fi 后，用「文件管理 → 电脑 → SMB」或数据线把整个 `public/atlas`
 文件夹复制到：
@@ -168,5 +211,5 @@ adb shell "cd /sdcard/Android/data/com.haoxin.wordatlas/files/atlas && find . -n
 - **换包名**：改 `capacitor.config.ts` 的 `appId` 与
   `android/app/src/main/java/com/haoxin/wordatlas/MainActivity.java` 的包路径，
   再 `npx cap sync android`。
-- **免 adb 导入**：在 App 里加一个「导入媒体包」按钮，用
-  `@capacitor/filesystem` 读取用户选中的 ZIP 并解压到沙盒目录。
+- **免 adb 导入（已实现）**：App 内置 `MediaPackPlugin`，启动时自动检测并解压
+  App 私有目录下的 `atlas.zip`；也可在「我的 → 导入媒体包（atlas.zip）」手动触发。
