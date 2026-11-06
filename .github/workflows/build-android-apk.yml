@@ -78,6 +78,23 @@ jobs:
           path: android/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
 
+      # Publish the APK as a release asset so it can be downloaded directly
+      # from a stable URL without signing in.
+      - name: Publish APK as a release asset
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: apk-debug-${{ github.run_number }}
+        run: |
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" android/app/build/outputs/apk/debug/app-debug.apk --clobber
+          else
+            gh release create "$TAG" \
+              android/app/build/outputs/apk/debug/app-debug.apk \
+              --title "WordAtlas debug APK (build ${{ github.run_number }})" \
+              --notes "Automated debug build. Media pack is NOT bundled; push public/atlas to the device."
+          fi
+          echo "DOWNLOAD_URL=https://github.com/${{ github.repository }}/releases/download/$TAG/app-debug.apk"
+
       # Optional release build: add a keystore as a repository secret
       # (ANDROID_KEYSTORE_BASE64 / ANDROID_KEYSTORE_PASSWORD / ANDROID_KEY_ALIAS /
       #  ANDROID_KEY_PASSWORD), then uncomment the steps below.
