@@ -1,10 +1,11 @@
-import { Download, HardDriveDownload, RotateCcw, Upload } from "lucide-react";
+import { Download, HardDriveDownload, Package, RotateCcw, Upload } from "lucide-react";
 import { useMemo, useRef } from "react";
 import { useAtlas } from "../atlas/context";
 import { isMastered } from "../store/srs";
 import { dayKey, exportBackup, importBackup, resetProgress, store, useStore, type Settings } from "../store/store";
 import { toast } from "../ui/Toast";
 import { isNative, MEDIA_ROOTS, mediaRootPath, setMediaRoot } from "../utils/assetResolver";
+import { mediaPack } from "../utils/mediaPack";
 import { readProgressBackup } from "../utils/progressBackup";
 import { streakOf } from "./Today";
 
@@ -59,6 +60,15 @@ export function Me({ privateAvailable }: { privateAvailable: boolean }) {
     await setMediaRoot(id);
     set({ mediaRoot: id });
     toast(`媒体包路径已切换到 ${mediaRootPath()}`, "ok");
+  };
+  const unpackPack = async () => {
+    try {
+      toast("正在解压媒体包，请勿退出…");
+      const r = await mediaPack.unpack();
+      toast(`媒体包已就绪：${r.files.toLocaleString()} 个文件`, "ok");
+    } catch (e) {
+      toast(String(e instanceof Error ? e.message : e), "warn");
+    }
   };
   const maxF = Math.max(1, ...stats.forecast);
 
@@ -236,6 +246,9 @@ export function Me({ privateAvailable }: { privateAvailable: boolean }) {
               <div className="data-actions">
                 <button className="btn btn-ghost" onClick={restoreSandbox}>
                   <HardDriveDownload size={18} /> 从沙盒恢复备份
+                </button>
+                <button className="btn btn-ghost" onClick={unpackPack}>
+                  <Package size={18} /> 导入媒体包（atlas.zip）
                 </button>
               </div>
             </>
