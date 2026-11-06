@@ -1,7 +1,9 @@
 import type { Atlas, Entry, IndexRow, WordRef } from "./types";
 import { MEDIA } from "./types";
+import { getAssetUrl } from "../utils/assetResolver";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
+/** Bundled data (index + entry chunks) always ships inside the APK. */
 const url = (p: string) => `${BASE}/atlas/${p}`;
 
 interface IndexFile {
@@ -76,12 +78,12 @@ export async function loadOpenAtlas(): Promise<Atlas> {
     },
     img: (ref, size = "full") =>
       ("media" in ref && typeof ref.media === "number" ? ref.media : (ref as Entry).m) & MEDIA.img
-        ? url(`${size === "thumb" ? "thumb" : "img"}/${ref.id}.webp`)
+        ? getAssetUrl(`${size === "thumb" ? "thumb" : "img"}/${ref.id}.webp`)
         : null,
     audio(ref, kind) {
       const m = "media" in ref && typeof ref.media === "number" ? ref.media : (ref as Entry).m;
       const bit = MEDIA[kind];
-      return m & bit ? url(`audio/${kind}/${ref.id}.mp3`) : null;
+      return m & bit ? getAssetUrl(`audio/${kind}/${ref.id}.mp3`) : null;
     },
   };
 }

@@ -14,6 +14,7 @@ import { Practice } from "./pages/Practice";
 import { Today } from "./pages/Today";
 import { cue } from "./lib/sound";
 import { store, useStore } from "./store/store";
+import { getMediaRoot, initAssetResolver, warnIfMediaMissing } from "./utils/assetResolver";
 import { EntryView } from "./ui/EntryView";
 import { AmbienceController, AmbiencePicker } from "./ui/Ambience";
 import { Logo } from "./ui/Logo";
@@ -50,6 +51,11 @@ export default function App() {
   useTheme();
 
   useEffect(() => {
+    void initAssetResolver().then(() => {
+      const root = getMediaRoot();
+      if (store.get().settings.mediaRoot !== root) store.settings({ mediaRoot: root });
+    });
+    void warnIfMediaMissing();
     loadOpenAtlas().then(
       (a) => {
         setOpen(a);

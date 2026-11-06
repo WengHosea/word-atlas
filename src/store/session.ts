@@ -1,6 +1,7 @@
 import type { Atlas, WordRef } from "../atlas/types";
 import { MEDIA } from "../atlas/types";
 import { hashSeed, normalize, shuffle } from "../lib/text";
+import { isMobile } from "../utils/assetResolver";
 import { isMastered, review, Rating, type Grade } from "./srs";
 import { bumpDay, dayKey, store, type ActiveSession, type Progress, type QuizKind, type Settings, type Step } from "./store";
 
@@ -45,7 +46,10 @@ function quizKind(ref: WordRef, p: Progress, s: Settings, salt: number): QuizKin
     if (hasImg && roll < 45) return "picture";
     return roll < 80 ? "meaning" : "listen";
   }
-  if (s.spell && (c.s >= 4 || roll < 35)) return roll < 75 ? "spell" : hasImg ? "picture" : "listen";
+  // On phones the spelling kind needs the system keyboard, which covers the
+  // illustration and pushes the layout around. Keep it off unless asked.
+  const spellAllowed = s.spell && (!isMobile() || s.spellMobile);
+  if (spellAllowed && (c.s >= 4 || roll < 35)) return roll < 75 ? "spell" : hasImg ? "picture" : "listen";
   return roll < 50 ? "listen" : hasImg ? "picture" : "meaning";
 }
 
@@ -164,6 +168,24 @@ export function sessionStats(s: ActiveSession) {
   const graded = Object.values(s.graded);
   const correct = graded.filter((g) => g !== Rating.Again).length;
   return { total: graded.length, correct, accuracy: graded.length ? Math.round((correct / graded.length) * 100) : 0 };
+}
+
+/**
+ * Override the automatic grade for a word with an explicit FSRS rating.
+ * Used by the Again / Hard / Good / Easy buttons on the review card.
+ */
+export function rate(id: string, grade: Grade) {
+  store.progress((p) => {
+    const sess = p.session;
+    if (!sess) return p;
+    if (!(id in sess.graded)) return p;
+    const { settings } = store.get();
+    return {
+      ...p,
+      cards: { ...p.cards, [id]: review(p.cards[id], grade, Date.now(), settings.retention) },
+      session: { ...sess, graded: { ...sess.graded, [id]: grade } },
+    };
+  });
 }
 
 export const masteredCount = (p: Progress) => Object.values(p.cards).filter(isMastered).length;

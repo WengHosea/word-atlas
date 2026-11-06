@@ -1,5 +1,5 @@
 import { Grid3x3, List, Search, Sparkles, X } from "lucide-react";
-import { Galaxy } from "../galaxy/Galaxy";
+import { GalaxyGate } from "../ui/GalaxyGate";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useAtlas } from "../atlas/context";
 import type { WordRef } from "../atlas/types";
@@ -225,7 +225,7 @@ export function AtlasPage({
       </div>
 
       {view === "galaxy" ? (
-        <Galaxy mode="full" focus={q.trim() ? list[0]?.id : null} />
+        <GalaxyGate mode="full" focus={q.trim() ? list[0]?.id : null} />
       ) : list.length === 0 ? (
         <div className="empty">
           <img src={`${import.meta.env.BASE_URL}brand/empty.webp`} alt="" />

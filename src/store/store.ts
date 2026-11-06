@@ -1,5 +1,6 @@
 import { useSyncExternalStore } from "react";
 import type { Accent } from "../atlas/types";
+import { writeProgressBackup } from "../utils/progressBackup";
 import type { CardState, Grade } from "./srs";
 
 export type QuizKind = "meaning" | "picture" | "listen" | "spell";
@@ -60,6 +61,10 @@ export interface Settings {
   ambience: "off" | "stars" | "rain" | "sea" | "forest" | "fire" | "voyage" | "cafe";
   ambienceVolume: number;
   splash: boolean;
+  /** Mobile: allow the spelling (typing) quiz kind, which needs the system keyboard. */
+  spellMobile: boolean;
+  /** Where the offline media pack is read from on the phone. */
+  mediaRoot: "app" | "download";
 }
 
 export const defaultSettings: Settings = {
@@ -76,6 +81,8 @@ export const defaultSettings: Settings = {
   ambience: "stars",
   ambienceVolume: 0.45,
   splash: true,
+  spellMobile: false,
+  mediaRoot: "app",
 };
 
 export const emptyProgress = (datasetId: string): Progress => ({
@@ -173,6 +180,8 @@ export function sanitizeSettings(v: unknown): Settings {
   if (["off", "stars", "rain", "sea", "forest", "fire", "voyage", "cafe"].includes(v.ambience as string)) s.ambience = v.ambience as Settings["ambience"];
   if (num(v.ambienceVolume, 0, 1)) s.ambienceVolume = v.ambienceVolume as number;
   if (typeof v.splash === "boolean") s.splash = v.splash;
+  if (typeof v.spellMobile === "boolean") s.spellMobile = v.spellMobile;
+  if (v.mediaRoot === "app" || v.mediaRoot === "download") s.mediaRoot = v.mediaRoot;
   return s;
 }
 
@@ -191,6 +200,7 @@ let state: State = {
 };
 const listeners = new Set<() => void>();
 let saveTimer: number | undefined;
+let backupTimer: number | undefined;
 /** Only write when this tab changed something, so idle tabs never clobber newer data. */
 let dirty = false;
 /** Progress is written only after it has been read from storage for this dataset. */
@@ -206,12 +216,23 @@ function scheduleSave() {
   saveTimer = window.setTimeout(flush, 250);
 }
 
+/** Write the sandbox copy a moment after the last change, so writes are rare. */
+function scheduleBackup() {
+  window.clearTimeout(backupTimer);
+  backupTimer = window.setTimeout(() => {
+    void writeProgressBackup(backupPayload());
+  }, 1200);
+}
+
 export function flush() {
   window.clearTimeout(saveTimer);
   if (!dirty) return;
   dirty = false;
   const progressOk = loadedId !== state.progress.datasetId || write(progressKey(state.progress.datasetId), state.progress);
   const ok = progressOk && write(SETTINGS_KEY, state.settings);
+  // Second safety net on the phone: keep a copy in the app sandbox so the
+  // progress survives a cleared WebView storage.
+  if (progressOk) scheduleBackup();
   if (ok === state.saveError) {
     state = { ...state, saveError: !ok };
     emit();
@@ -287,6 +308,11 @@ export function toggleBookmark(id: string) {
 
 export function exportBackup() {
   flush();
+  return backupPayload();
+}
+
+/** The backup JSON, without touching the flush cycle. */
+function backupPayload() {
   const { progress, settings } = state;
   return JSON.stringify({ app: "word-atlas", version: 2, exported: new Date().toISOString(), progress: { ...progress, session: null }, settings }, null, 1);
 }

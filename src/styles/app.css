@@ -4120,3 +4120,88 @@ a:hover .mark-needle,
 .streak-panel .mini-stats div:first-child dd {
   color: var(--ochre);
 }
+
+/* ---------- mobile: one-handed thumb zone ---------- */
+
+/* The galaxy is opt-in on a phone; this is the button that loads it. */
+.galaxy-gate {
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 6px;
+  width: 100%;
+  min-height: 180px;
+  padding: 20px;
+  border: 1px dashed var(--line);
+  border-radius: 20px;
+  background: color-mix(in oklab, var(--card) 70%, transparent);
+  color: var(--ink-2);
+  font: inherit;
+  text-align: center;
+  cursor: pointer;
+}
+.galaxy-gate span {
+  font-weight: 700;
+  color: var(--ink);
+}
+.galaxy-gate small {
+  font-size: 12px;
+  color: var(--ink-3);
+}
+
+/* FSRS ratings sit at the bottom of the screen, within thumb reach. */
+.rating-bar {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+  padding: 10px var(--gutter) calc(10px + env(safe-area-inset-bottom));
+  background: var(--paper);
+  border-top: 1px solid var(--line);
+}
+.rating {
+  display: grid;
+  justify-items: center;
+  gap: 2px;
+  min-height: 48px;
+  padding: 8px 4px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--card);
+  color: var(--ink);
+  font: inherit;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.rating b {
+  font-size: 14px;
+}
+.rating small {
+  font-size: 11px;
+  color: var(--ink-3);
+}
+.rating:active {
+  transform: scale(0.97);
+}
+.rating-Again {
+  border-color: color-mix(in oklab, var(--terra) 45%, var(--line));
+}
+.rating-Hard {
+  border-color: color-mix(in oklab, var(--ochre) 45%, var(--line));
+}
+.rating-Good {
+  border-color: color-mix(in oklab, var(--sage) 45%, var(--line));
+}
+.rating-Easy {
+  border-color: color-mix(in oklab, var(--sage-ink) 35%, var(--line));
+}
+
+/* The flip / continue button keeps a 48px touch target on phones. */
+@media (max-width: 759px) {
+  .learn-actions .btn,
+  .feedback .btn {
+    min-height: 48px;
+  }
+  .learn-actions {
+    padding-bottom: calc(16px + env(safe-area-inset-bottom));
+  }
+}

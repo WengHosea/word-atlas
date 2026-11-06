@@ -7,12 +7,14 @@ import { burst } from "../lib/burst";
 import { cue } from "../lib/sound";
 import { go } from "../lib/router";
 import { gap, normalize } from "../lib/text";
+import { isMobile } from "../utils/assetResolver";
 import { answer, advance, buildSession, gradeFor, sessionStats } from "../store/session";
-import { Rating } from "../store/srs";
+import { formatInterval, preview, Rating, type Grade } from "../store/srs";
+import { rate } from "../store/session";
 import { store, useStore, type ActiveSession, type QuizKind, type Step } from "../store/store";
 import { EntryView, Highlight } from "../ui/EntryView";
 import { Illustration } from "../ui/Illustration";
-import { Galaxy } from "../galaxy/Galaxy";
+import { GalaxyGate } from "../ui/GalaxyGate";
 import { AmbiencePicker } from "../ui/Ambience";
 import { Ring } from "../ui/Ring";
 import { Speak } from "../ui/Speak";
@@ -336,6 +338,7 @@ function Feedback({ entry, refw, correct, onNext }: { entry: Entry; refw: WordRe
   const atlas = useAtlas();
   const btn = useRef<HTMLButtonElement>(null);
   useEffect(() => btn.current?.focus({ preventScroll: true }), []);
+  const mobile = isMobile();
   return (
     <div className={`feedback ${correct ? "is-right" : "is-wrong"}`} role="status">
       <div className="feedback-inner">
@@ -362,6 +365,36 @@ function Feedback({ entry, refw, correct, onNext }: { entry: Entry; refw: WordRe
           继续 <ArrowRight size={20} />
         </button>
       </div>
+      {mobile && <RatingBar wordId={entry.id} />}
+    </div>
+  );
+}
+
+const RATINGS: { grade: Grade; label: string; hint: string }[] = [
+  { grade: Rating.Again, label: "重来", hint: "又忘了" },
+  { grade: Rating.Hard, label: "吃力", hint: "想很久" },
+  { grade: Rating.Good, label: "记得", hint: "正常" },
+  { grade: Rating.Easy, label: "秒过", hint: "很轻松" },
+];
+
+/** FSRS ratings in the thumb zone, so a phone learner can grade one-handed. */
+function RatingBar({ wordId }: { wordId: string }) {
+  const card = useStore((s) => s.progress.cards[wordId]);
+  const retention = useStore((s) => s.settings.retention);
+  const intervals = useMemo(() => preview(card, Date.now(), retention), [card, retention]);
+  return (
+    <div className="rating-bar" role="group" aria-label="记忆评分">
+      {RATINGS.map((r) => (
+        <button
+          key={r.grade}
+          type="button"
+          className={`rating rating-${r.grade}`}
+          onClick={() => rate(wordId, r.grade)}
+        >
+          <b>{r.label}</b>
+          <small>{formatInterval(intervals[r.grade])}</small>
+        </button>
+      ))}
     </div>
   );
 }
@@ -387,7 +420,7 @@ function Summary({ session }: { session: ActiveSession }) {
     <div className="learn summary">
       <div className="summary-card">
         <div className="summary-sky">
-          <Galaxy mode="mini" highlight={words.map((w) => w.id)} ignite />
+          <GalaxyGate mode="mini" highlight={words.map((w) => w.id)} ignite />
           <p>今天点亮了 {words.length} 颗星</p>
         </div>
         <p className="eyebrow">这一程结束了</p>

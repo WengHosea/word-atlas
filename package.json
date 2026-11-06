@@ -6,6 +6,9 @@
   "scripts": {
     "dev": "vite --host 0.0.0.0",
     "build": "tsc -b && vite build",
+    "build:mobile": "node scripts/build-apk-web.mjs",
+    "cap:sync": "npm run build:mobile && cap sync android",
+    "apk:debug": "npm run cap:sync && cd android && gradlew assembleDebug",
     "preview": "vite preview --host 0.0.0.0",
     "test": "node --import tsx --test src/**/*.test.ts",
     "check:atlas": "node scripts/check-atlas.mjs",
@@ -15,6 +18,11 @@
     "format": "prettier --write src vite.config.ts scripts/*.mjs package.json tsconfig.json"
   },
   "dependencies": {
+    "@capacitor/android": "^8.6.0",
+    "@capacitor/cli": "^8.6.0",
+    "@capacitor/core": "^8.6.0",
+    "@capacitor/filesystem": "^8.1.5",
+    "@capacitor/preferences": "^8.0.1",
     "@fontsource-variable/fraunces": "^5.3.0",
     "lucide-react": "^0.468.0",
     "react": "^19.2.0",

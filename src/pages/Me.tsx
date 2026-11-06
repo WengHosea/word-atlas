@@ -1,9 +1,11 @@
-import { Download, RotateCcw, Upload } from "lucide-react";
+import { Download, HardDriveDownload, RotateCcw, Upload } from "lucide-react";
 import { useMemo, useRef } from "react";
 import { useAtlas } from "../atlas/context";
 import { isMastered } from "../store/srs";
 import { dayKey, exportBackup, importBackup, resetProgress, store, useStore, type Settings } from "../store/store";
 import { toast } from "../ui/Toast";
+import { isNative, MEDIA_ROOTS, mediaRootPath, setMediaRoot } from "../utils/assetResolver";
+import { readProgressBackup } from "../utils/progressBackup";
 import { streakOf } from "./Today";
 
 export function Me({ privateAvailable }: { privateAvailable: boolean }) {
@@ -45,6 +47,18 @@ export function Me({ privateAvailable }: { privateAvailable: boolean }) {
     if (f.size > 30 * 1024 * 1024) return toast("文件太大，不像是学习备份。", "warn");
     const r = importBackup(await f.text());
     toast(r.ok ? `已恢复 ${r.cards} 个词的记忆` : r.error, r.ok ? "ok" : "warn");
+  };
+  const native = isNative();
+  const restoreSandbox = async () => {
+    const text = await readProgressBackup();
+    if (!text) return toast("沙盒里还没有备份文件。", "warn");
+    const r = importBackup(text);
+    toast(r.ok ? `已从沙盒恢复 ${r.cards} 个词的记忆` : r.error, r.ok ? "ok" : "warn");
+  };
+  const pickRoot = async (id: "app" | "download") => {
+    await setMediaRoot(id);
+    set({ mediaRoot: id });
+    toast(`媒体包路径已切换到 ${mediaRootPath()}`, "ok");
   };
   const maxF = Math.max(1, ...stats.forecast);
 
@@ -165,6 +179,9 @@ export function Me({ privateAvailable }: { privateAvailable: boolean }) {
           <Toggle label="界面音效" on={settings.sfx} set={(v) => set({ sfx: v })} />
           <Toggle label="开屏动画（每天一次）" on={settings.splash} set={(v) => set({ splash: v })} />
           <Toggle label="复习时加入拼写题" on={settings.spell} set={(v) => set({ spell: v })} />
+          {native && (
+            <Toggle label="移动端开启拼写题（需要系统键盘）" on={settings.spellMobile} set={(v) => set({ spellMobile: v })} />
+          )}
           {privateAvailable && (
             <Field label="词库" hint="私人词库只在本机开发服务器中可用，不会被打包发布。">
               <div className="segmented">
@@ -203,6 +220,26 @@ export function Me({ privateAvailable }: { privateAvailable: boolean }) {
               <RotateCcw size={18} /> 清空记录
             </button>
           </div>
+          {native && (
+            <>
+              <h3 className="eyebrow">离线媒体包</h3>
+              <p className="muted">
+                当前路径：<code>{mediaRootPath()}</code>
+              </p>
+              <div className="segmented">
+                {MEDIA_ROOTS.map((r) => (
+                  <button key={r.id} className={settings.mediaRoot === r.id ? "is-on" : ""} onClick={() => pickRoot(r.id)}>
+                    {r.label}
+                  </button>
+                ))}
+              </div>
+              <div className="data-actions">
+                <button className="btn btn-ghost" onClick={restoreSandbox}>
+                  <HardDriveDownload size={18} /> 从沙盒恢复备份
+                </button>
+              </div>
+            </>
+          )}
         </section>
       </div>
     </div>

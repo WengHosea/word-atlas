@@ -7,7 +7,7 @@ import { hashSeed } from "../lib/text";
 import { buildSession, masteredCount, todayPlan } from "../store/session";
 import { isMastered } from "../store/srs";
 import { dayKey, store, useStore } from "../store/store";
-import { Galaxy } from "../galaxy/Galaxy";
+import { GalaxyGate } from "../ui/GalaxyGate";
 import { Highlight, Pronounce } from "../ui/EntryView";
 import { Illustration } from "../ui/Illustration";
 import { Ring } from "../ui/Ring";
@@ -212,7 +212,7 @@ function GalaxyPanel({ learned, total }: { learned: number; total: number }) {
   void today;
   return (
     <section className="galaxy-panel" onClick={() => go({ page: "atlas", view: "galaxy" })} role="link" tabIndex={0} onKeyDown={(e) => e.key === "Enter" && go({ page: "atlas", view: "galaxy" })}>
-      <Galaxy mode="mini" highlight={todayIds} />
+      <GalaxyGate mode="mini" highlight={todayIds} />
       <div className="galaxy-panel-copy">
         <p className="eyebrow eyebrow-light">你的词汇星图</p>
         <h3>
