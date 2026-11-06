@@ -3,6 +3,10 @@ package com.haoxin.wordatlas;
 import android.os.Environment;
 import android.os.Handler;
 import android.os.Looper;
+import android.os.Build;
+import android.os.StatFs;
+import android.content.pm.PackageInfo;
+import android.content.pm.PackageManager;
 
 import com.getcapacitor.JSObject;
 import com.getcapacitor.Plugin;
@@ -56,6 +60,9 @@ public class MediaPackPlugin extends Plugin {
     /** Name of the diagnostic log inside the app's external files dir. */
     static final String LOG_NAME = "diag.log";
 
+    /** Name of the file that records which build is running on the device. */
+    static final String STAMP_NAME = "version.txt";
+
     /**
      * Candidate locations for the media pack archive, most persistent first.
      *
@@ -102,6 +109,50 @@ public class MediaPackPlugin extends Plugin {
     }
 
     // ---------------------------------------------------------------- log ---
+
+    /**
+     * Write a stamp file that tells us exactly which build is running.
+     *
+     * The app cannot be reached by adb on the author's phone, so this file
+     * is the only reliable way to tell "the new APK is installed" from "the
+     * new APK is installed *and running*".
+     */
+    private void writeStamp() {
+        try {
+            File out = new File(logDir(), STAMP_NAME);
+            String text = "sdk=" + Build.VERSION.SDK_INT + "\n"
+                + "versionName=" + appVersionName() + "\n"
+                + "stampWrittenAt=" + System.currentTimeMillis() + "\n";
+            try (OutputStream os = new FileOutputStream(out, false)) {
+                os.write(text.getBytes("UTF-8"));
+            }
+        } catch (Exception ignored) {
+            /* the stamp is a convenience, never a hard requirement */
+        }
+    }
+
+    /** The app's versionName, read from the package manager. */
+    private String appVersionName() {
+        try {
+            PackageInfo info = getContext().getPackageManager().getPackageInfo(
+                getContext().getPackageName(), 0);
+            return info.versionName == null ? "?" : info.versionName;
+        } catch (PackageManager.NameNotFoundException e) {
+            return "?";
+        }
+    }
+
+    /** Free bytes on the volume that holds the app's external files dir. */
+    private long freeBytes() {
+        try {
+            File dir = getContext().getExternalFilesDir(null);
+            if (dir == null) return -1L;
+            StatFs fs = new StatFs(dir.getAbsolutePath());
+            return fs.getAvailableBytes();
+        } catch (Exception e) {
+            return -1L;
+        }
+    }
 
     /** Append one line to the on-device log. Never throws. */
     private void log(String message) {
@@ -184,7 +235,9 @@ public class MediaPackPlugin extends Plugin {
      */
     @Override
     public void load() {
-        log("=== app start ===");
+        writeStamp();
+        log("=== app start (sdk=" + Build.VERSION.SDK_INT + " version=" + appVersionName() + ") ===");
+        log("free space = " + freeBytes() + " bytes");
         worker.execute(() -> {
             try {
                 File target = targetDir();
@@ -204,6 +257,11 @@ public class MediaPackPlugin extends Plugin {
                     return;
                 }
                 log("unpacking " + zip.getAbsolutePath() + " (" + zip.length() + " bytes)");
+                long free = freeBytes();
+                if (free > 0 && free < zip.length() * 3 / 2) {
+                    log("WARNING: not enough free space (" + free + " bytes) for a "
+                        + zip.length() + " byte archive");
+                }
                 unpackInto(zip, target);
             } catch (Throwable t) {
                 logError("load", t);
