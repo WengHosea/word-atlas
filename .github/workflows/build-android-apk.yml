@@ -38,11 +38,13 @@ jobs:
           node-version: '22'
           cache: npm
 
-      - name: Setup JDK 17 (Temurin)
+      # Capacitor 8's Android library compiles with source/target 21, so the
+      # JDK must be 21 or newer (JDK 17 fails with "invalid source release: 21").
+      - name: Setup JDK 21 (Temurin)
         uses: actions/setup-java@v5
         with:
           distribution: temurin
-          java-version: '17'
+          java-version: '21'
 
       - name: Setup Android SDK and install platform packages
         run: |
