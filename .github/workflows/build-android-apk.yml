@@ -31,10 +31,11 @@ jobs:
             !/public/atlas/thumb/
             !/public/atlas/audio/
 
-      - name: Setup Node.js 20
+      # Capacitor CLI 8 hard-requires Node >= 22, so Node 20 cannot be used here.
+      - name: Setup Node.js 22
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
           cache: npm
 
       - name: Setup JDK 17 (Temurin)
@@ -64,7 +65,9 @@ jobs:
 
       - name: Assemble debug APK
         working-directory: android
-        run: ./gradlew assembleDebug --no-daemon
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleDebug --no-daemon
 
       - name: Upload app-debug.apk
         uses: actions/upload-artifact@v4
