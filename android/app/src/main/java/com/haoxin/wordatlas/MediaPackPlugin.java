@@ -257,11 +257,14 @@ public class MediaPackPlugin extends Plugin {
     private JSObject state() {
         File target = targetDir();
         File zip = findPack();
+        boolean bundled = hasBundledAsset();
         JSObject out = new JSObject();
         out.put("ready", AtlasExtractor.isReady(target));
         out.put("present", target.isDirectory());
-        out.put("packFound", zip != null);
-        out.put("bundled", hasBundledAsset());
+        // A bundled pack counts as "found" even before it has been staged,
+        // because the app can unpack it on its own.
+        out.put("packFound", zip != null || bundled);
+        out.put("bundled", bundled);
         out.put("packPath", zip == null ? "" : zip.getAbsolutePath());
         out.put("packBytes", zip == null ? 0L : zip.length());
         out.put("path", target.getAbsolutePath());
