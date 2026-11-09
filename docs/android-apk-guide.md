@@ -3,6 +3,11 @@
 本文档说明如何用 GitHub Actions 在云端打出 Android 安装包（APK），以及如何把
 体积较大的离线媒体包（插画 + 音频）导入手机，让 App 立刻可用。
 
+> **从 build 22 起，媒体包直接打进 APK 里。**
+> 下载一个约 630 MB 的 APK 装上就行，**不需要再手动推 600 MB 的 atlas.zip**。
+> App 首次启动时会把内置的媒体包解压到自己的私有目录，几分钟后插画与发音即可用。
+> 后面的"手动推包"章节保留给旧版 APK 或需要重新解压时使用。
+
 ![应用界面](../docs/today-mobile.jpg)
 
 ## 架构速览
@@ -10,19 +15,22 @@
 ```
 ┌──────────────────────────────┐        ┌──────────────────────────────┐
 │  GitHub Actions (ubuntu)      │        │  Android 手机                  │
-│  ├─ npm run build:mobile      │        │  ├─ WordAtlas.apk  (~14 MB)   │
+│  ├─ npm run build:mobile      │        │  ├─ WordAtlas.apk  (~630 MB)  │
 │  │   （媒体目录临时移出）      │        │  │   词库索引 + entries JSON     │
 │  ├─ npx cap sync android      │  APK   │  │   WebView 壳 + Capacitor     │
-│  └─ gradlew assembleDebug     │ ─────► │  └─ /Android/data/.../files/   │
-└──────────────────────────────┘        │       atlas/  ← adb push 媒体包 │
-                                        │         img/ thumb/ audio/      │
-                                        └──────────────────────────────┘
+│  ├─ bundle-media-pack.mjs     │        │  └─ /Android/data/.../files/   │
+│  │   （媒体打成 atlas.zip）   │        │       atlas/  ← 首次启动自动解压│
+│  └─ gradlew assembleDebug     │ ─────► │         img/ thumb/ audio/      │
+└──────────────────────────────┘        └──────────────────────────────┘
 ```
 
-- APK 内只带**词库索引**（`index.json`）和 **73 个词条 JSON 分片**（`entries/`），
-  用来保证秒开。
-- 图片与音频**不打包**，运行时从手机外部存储读取（OBB 模式）。
-- 媒体根目录可在「我的」页切换：应用私有目录 ↔ `/sdcard/Download/word-atlas/atlas`。
+- APK 内带**词库索引**（`index.json`）、**73 个词条 JSON 分片**（`entries/`）
+  以及压缩后的**媒体包**（`atlas.zip`，37,576 个文件）。
+- 首次启动时 App 把 `atlas.zip` 从自己的 assets 里释放到私有目录并解压，
+  **全程不需要任何存储权限**。
+- 解压完成后媒体就在
+  `/storage/emulated/0/Android/data/com.haoxin.wordatlas/files/atlas/`，
+  前端通过 `file://` 协议直接读取。
 
 ## 一、在云端打出 APK
 
@@ -30,7 +38,8 @@
 
 1. 打开仓库 **Actions** 页签：<https://github.com/WengHosea/word-atlas/actions>
 2. 左侧选择工作流 **Build Android APK**
-3. 点击右侧绿色按钮 **Run workflow** → 确认分支 → 等待约 2–4 分钟
+3. 点击右侧绿色按钮 **Run workflow** → 确认分支 → 等待约 6–10 分钟
+   （内置媒体包的构建比旧版慢，要先把 37,576 个媒体文件打成 zip）
 
 > 也可以直接 `git push` 到 `main` / `mobile` 分支，工作流会自动触发。
 
@@ -53,11 +62,11 @@
 https://github.com/WengHosea/word-atlas/releases/download/apk-debug-<运行号>/app-debug.apk
 ```
 
-本次已发布的版本：**`apk-debug-20`**（对应提交 `0d37f74`）
+本次已发布的版本：**`apk-debug-22`**（对应提交 `ef59d61`，**内置媒体包**）
 
 ```powershell
 # 直接下载到本机
-Invoke-WebRequest "https://github.com/WengHosea/word-atlas/releases/download/apk-debug-20/app-debug.apk" -OutFile D:\Downloads\app-debug.apk
+Invoke-WebRequest "https://github.com/WengHosea/word-atlas/releases/download/apk-debug-22/app-debug.apk" -OutFile D:\Downloads\app-debug.apk
 ```
 
 也可以在 <https://github.com/WengHosea/word-atlas/releases> 页面点击 `app-debug.apk` 下载。
@@ -75,8 +84,11 @@ Invoke-WebRequest "https://github.com/WengHosea/word-atlas/releases/download/apk
 
 ## 二、把 APK 装到手机上
 
-> 手机上按文件名排序，最新的那个才是要装的：`app-debug-v20.apk`。
-> 历史版本 `v10 / v11 / v16 / v18` 建议删掉，避免装错。
+> 手机上按文件名排序，最新的那个才是要装的：`app-debug-v22.apk`。
+> 历史版本 `v10 / v11 / v16 / v18 / v20` 建议删掉，避免装错。
+
+装 **build 22 或更新**的版本时，APK 约 630 MB，手机上的旧 `atlas.zip`
+**不需要再推了**，App 自带。
 
 1. 手机 **设置 → 其他设置 → 开发者选项** → 打开 **USB 调试**
 2. 用数据线连电脑，手机上弹出「允许 USB 调试」时点**允许**
@@ -89,7 +101,7 @@ Invoke-WebRequest "https://github.com/WengHosea/word-atlas/releases/download/apk
 powershell -ExecutionPolicy Bypass -File scripts/push-apk.ps1 -Apk D:\Downloads\app-debug.apk
 ```
 
-推完在手机「文件 → Download」里就能看到它，文件名带 `-v10` 后缀的是最新版。
+推完在手机「文件 → Download」里就能看到它，文件名带 `-v22` 后缀的是最新版。
 
 > ⚠️ **坑**：MTP 脚本如果按目录名全局匹配 `Download`，会误命中本机的
 > 「百度网盘 → AutoUpdate → Download」，文件会传到电脑上，手机里根本找不到。
@@ -101,7 +113,28 @@ powershell -ExecutionPolicy Bypass -File scripts/push-apk.ps1 -Apk D:\Downloads\
 adb install -r "D:\Downloads\app-debug.apk"
 ```
 
-## 三、导入离线媒体包（关键步骤，约 620 MB）
+## 三、导入离线媒体包
+
+> **build 22 及以后不需要这一章。**
+> 媒体包已经打进 APK 里，打开 App 会自动释放并解压。
+> 本章保留给 build 20 及更早的版本，或者需要重置媒体包时使用。
+
+### 3.0-（新版）首次启动自动解压：什么都不用做
+
+装好 build 22 的 APK 后：
+
+1. 打开 App，首页出现全屏进度页 `正在解压媒体包 x/37,576`
+2. 等它跑完（手机存储速度不同，约 3–10 分钟）
+3. 自动跳回首页，任意单词页就有插画和发音了
+
+App 会把内置的 `atlas.zip` 释放到
+`Android/data/com.haoxin.wordatlas/files/atlas-bundled.zip`，
+再解压到同目录的 `atlas/`。**全程在 App 私有目录内，不需要任何权限。**
+
+如果解压被打断（App 被系统杀掉、手动退出），**下次打开会自动续传**，
+已经解出来的文件会跳过。
+
+### 3.0（旧版）免 adb 路线：打成 zip，App 自己解压
 
 媒体包在电脑上的位置：`D:\project\github\word-atlas\public\atlas\`
 
@@ -180,7 +213,7 @@ App 首次启动时，首页会显示一个**全屏解压进度页**，形如
 （Windows 资源管理器看不到 `Android/data` 时，可以用仓库里的
 `scripts/mphone.ps1` 之类的 MTP 脚本列目录）。
 
-### 3.1 用 adb 一键推送（推荐）
+### 3.1 用 adb 一键推送（旧版 APK 专用）
 
 ```powershell
 # 1) 创建目标目录
@@ -195,7 +228,7 @@ adb shell "cd /sdcard/Android/data/com.haoxin.wordatlas/files/atlas && find . -n
 
 > `npm run build:mobile` 结束时会自动打印上面这三行命令，可直接复制。
 
-### 3.2 不用 adb 的替代方案（逐文件复制，较慢）
+### 3.2 不用 adb 的替代方案（逐文件复制，较慢；旧版 APK 专用）
 
 手机连接 Wi-Fi 后，用「文件管理 → 电脑 → SMB」或数据线把整个 `public/atlas`
 文件夹复制到：
@@ -367,6 +400,36 @@ WARNING: not enough free space (123456789 bytes) for a 646090503 byte archive
    - `unpacking` → 等它解完，或中途被杀（下次启动会自动续传）
    - `unpack finished ... ready=true` → 包没问题，检查「我的」页的媒体根路径
 4. 手机剩余空间 ≥ 1.4 GB？
+
+### 5.7 Android 11+ 读不了 Download 目录（build 20 翻车的真凶）
+
+这是 build 20「装完还是没图没声」的**真实原因**，`diag.log` 里写得清清楚楚：
+
+```
+unpacking /storage/emulated/0/Download/atlas.zip (646090503 bytes)
+ERROR in load: java.io.FileNotFoundException:
+  /storage/emulated/0/Download/atlas.zip: open failed: EACCES (Permission denied)
+```
+
+| 事实 | 说明 |
+| --- | --- |
+| Android 11+（你的 sdk=35）**禁止 App 读共享 Download 目录** | 除非用户手动授予「所有文件访问权限」，否则一律 `EACCES` |
+| `READ_EXTERNAL_STORAGE` 权限**已经失效** | Android 13 起这个权限对普通文件不再生效，`maxSdkVersion=32` 让它在你的手机上根本不生效 |
+| App 私有目录**永远可读** | `/Android/data/<包名>/files/` 是 App 自己的地盘，不需要任何权限 |
+
+所以 build 20 之前的整条"把 atlas.zip 放进 Download → App 去读"的路线
+在 Android 11+ 上是**行不通的**。
+
+**两个修法（build 22 一起做了）：**
+
+1. **把媒体包打进 APK**（主方案）—— App 从自己的 assets 里读，永远不受外部存储限制，
+   用户也再不用手动推 600 MB。
+2. **探针跳过不可读的包**——`findPack()` 现在会实际试读每个候选文件，
+   读不到就跳过并写进 `diag.log`，而不是抛一个 `EACCES` 让 App 看起来像坏了。
+
+> 顺带一提：把 zip 放在 App 私有目录
+> `Android/data/com.haoxin.wordatlas/files/atlas.zip` 是旧版 APK 唯一可行的位置，
+> 但重装 App 会清掉这个目录，所以只能算临时方案。
 
 ## 六、后续可做的增强
 
