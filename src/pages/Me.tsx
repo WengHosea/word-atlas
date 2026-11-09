@@ -244,7 +244,9 @@ export function Me({ privateAvailable }: { privateAvailable: boolean }) {
                   ? `媒体包已就绪（${pack.files.toLocaleString()} 个文件），图片与发音可用。`
                   : pack.phase === "unpacking"
                     ? pack.message
-                    : "媒体包尚未就绪，图片与发音可能无法显示。"}
+                    : pack.bundled
+                      ? "此安装包内置了媒体包，点下面的「解压媒体包」即可（首次约需几分钟）。"
+                      : "媒体包尚未就绪，图片与发音可能无法显示。"}
               </p>
               <div className="segmented">
                 {MEDIA_ROOTS.map((r) => (
@@ -258,7 +260,12 @@ export function Me({ privateAvailable }: { privateAvailable: boolean }) {
                   <HardDriveDownload size={18} /> 从沙盒恢复备份
                 </button>
                 <button className="btn btn-ghost" onClick={unpackPack}>
-                  <Package size={18} /> {pack.phase === "ready" ? "重新解压媒体包" : "解压媒体包（atlas.zip）"}
+                  <Package size={18} />{" "}
+                  {pack.phase === "ready"
+                    ? "重新解压媒体包"
+                    : pack.bundled
+                      ? "解压媒体包（内置）"
+                      : "解压媒体包（atlas.zip）"}
                 </button>
               </div>
             </>

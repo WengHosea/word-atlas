@@ -14,6 +14,8 @@ export interface MediaPackState {
   present: boolean;
   /** True when an `atlas.zip` archive was found somewhere. */
   packFound: boolean;
+  /** True when this APK ships with the media pack bundled in its assets. */
+  bundled?: boolean;
   packPath: string;
   packBytes: number;
   /** Absolute path of the unpacked media. */

@@ -20,9 +20,11 @@ export interface PackProgress {
   total: number;
   bytes: number;
   message: string;
+  /** True when the installed APK ships with the media pack inside it. */
+  bundled?: boolean;
 }
 
-let state: PackProgress = { phase: "idle", files: 0, total: 0, bytes: 0, message: "" };
+let state: PackProgress = { phase: "idle", files: 0, total: 0, bytes: 0, message: "", bundled: false };
 const subs = new Set<() => void>();
 const set = (patch: Partial<PackProgress>) => {
   state = { ...state, ...patch };
@@ -51,14 +53,28 @@ export async function ensureMediaPack(): Promise<MediaPackState | null> {
   try {
     const s = await mediaPack.status();
     if (s.ready) {
-      set({ phase: "ready", files: s.files, total: s.files, bytes: 0, message: "" });
+      set({ phase: "ready", files: s.files, total: s.files, bytes: 0, message: "", bundled: s.bundled });
       return s;
     }
-    if (!s.packFound) {
-      set({ phase: "missing", files: 0, total: 0, bytes: 0, message: "没有找到 atlas.zip 媒体包" });
+    if (!s.packFound && !s.bundled) {
+      set({
+        phase: s.bundled ? "idle" : "missing",
+        files: 0,
+        total: 0,
+        bytes: 0,
+        bundled: s.bundled,
+        message: s.bundled ? "" : "没有找到 atlas.zip 媒体包",
+      });
       return s;
     }
-    set({ phase: "unpacking", files: 0, total: 0, bytes: 0, message: "正在解压媒体包，请勿退出应用…" });
+    set({
+      phase: "unpacking",
+      files: 0,
+      total: 0,
+      bytes: 0,
+      bundled: s.bundled,
+      message: "正在解压媒体包，请勿退出应用…",
+    });
     await runUnpack();
     return await mediaPack.status();
   } catch (e) {

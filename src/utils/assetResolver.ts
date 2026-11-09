@@ -131,7 +131,7 @@ export async function hasMediaPack(): Promise<boolean> {
 }
 
 export const MISSING_PACK_MESSAGE =
-  "未检测到完整的离线媒体包。请把 atlas.zip 放到手机 Download/word-atlas/ 或应用私有目录，然后在「我的 → 离线媒体包」里重新解压。";
+  "未检测到完整的离线媒体包。若当前安装包内置了媒体包，请在「我的 → 离线媒体包」里点一次解压；否则请把 atlas.zip 放到应用私有目录后重新打开 App。";
 
 let warned = false;
 
