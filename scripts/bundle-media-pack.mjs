@@ -62,12 +62,39 @@ console.log(
   `bundle-media-pack: packing ${count} files (${(total / 1024 / 1024).toFixed(1)} MB) ...`,
 );
 
-// `tar -a` picks the zip format from the file extension.
-execFileSync(
-  "tar",
-  ["-a", "-c", "-f", outFile, "-C", path.dirname(atlasDir), path.basename(atlasDir)],
-  { stdio: "inherit" },
-);
+packZip(atlasDir, outFile);
+
+/**
+ * Create a real ZIP archive of the media tree.
+ *
+ * This must not be done with `tar -a`: that flag is a BSD tar extension.
+ * GNU tar (the default `tar` on the Ubuntu CI runner) silently ignores it
+ * and writes a *tar* file with a `.zip` name. The Android side opens the
+ * pack with `java.util.zip.ZipFile`, which rejects a tar file — the app
+ * then unpacks nothing and shows no illustrations and no audio, while the
+ * build looks perfectly green.
+ *
+ * `jar cMf` (JDK, present both in CI and on the author's machine) always
+ * writes a real ZIP with deflated entries and no extra manifest.
+ */
+function packZip(atlasDir, outFile) {
+  const jar = process.platform === "win32" ? "jar.exe" : "jar";
+  execFileSync(jar, ["cMf", path.resolve(outFile), path.basename(atlasDir)], {
+    cwd: path.dirname(atlasDir),
+    stdio: "inherit",
+  });
+}
+
+// Fail loudly here instead of shipping a broken APK: the first two bytes of
+// a ZIP archive are always "PK".
+const magic = fs.readFileSync(outFile).subarray(0, 2).toString("latin1");
+if (magic !== "PK") {
+  console.error(
+    `bundle-media-pack: ${outFile} is not a ZIP archive (magic=${JSON.stringify(magic)}). ` +
+      "The packer produced a different format; the app could never unpack it.",
+  );
+  process.exit(1);
+}
 
 const mb = fs.statSync(outFile).size / 1024 / 1024;
 console.log(`bundle-media-pack: wrote ${outFile} (${mb.toFixed(1)} MB)`);

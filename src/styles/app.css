@@ -45,6 +45,30 @@
   color-scheme: light;
 }
 
+/* ---------- safe area ----------
+
+   Android 15 (targetSdk 36) draws every app edge to edge, so the status bar
+   and the gesture bar sit *on top of* the web view. Capacitor's SystemBars
+   plugin with `insetsHandling: "css"` handles the two possible shapes:
+
+   - WebView < 140: the native window is padded by the system bar insets and
+     the CSS insets are reported as 0. The status bar no longer overlaps the
+     page, but the web view can no longer draw edge to edge.
+   - WebView >= 140: the web view is truly edge to edge and both
+     `env(safe-area-inset-*)` and the injected `--safe-area-inset-*` hold the
+     real values.
+
+   `--sat-*` takes the larger of the two sources, so an inset is applied
+   exactly once on every device — never zero (header under the status bar)
+   and never twice (a double gap).
+*/
+:root {
+  --sat-top: max(env(safe-area-inset-top, 0px), var(--safe-area-inset-top, 0px));
+  --sat-right: max(env(safe-area-inset-right, 0px), var(--safe-area-inset-right, 0px));
+  --sat-bottom: max(env(safe-area-inset-bottom, 0px), var(--safe-area-inset-bottom, 0px));
+  --sat-left: max(env(safe-area-inset-left, 0px), var(--safe-area-inset-left, 0px));
+}
+
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
     --paper: #0d1120;
@@ -116,7 +140,7 @@
 html {
   -webkit-text-size-adjust: 100%;
   text-size-adjust: 100%;
-  scroll-padding-top: calc(var(--top) + 12px);
+  scroll-padding-top: calc(var(--top) + var(--sat-top) + 12px);
 }
 html.is-locked {
   overflow: hidden;
@@ -527,6 +551,8 @@ code {
   min-height: 100dvh;
   display: flex;
   flex-direction: column;
+  padding-left: var(--sat-left);
+  padding-right: var(--sat-right);
 }
 .main {
   flex: 1;
@@ -556,11 +582,13 @@ code {
   position: sticky;
   top: 0;
   z-index: 30;
-  height: var(--top);
+  height: calc(var(--top) + var(--sat-top));
+  padding-top: var(--sat-top);
   display: flex;
   align-items: center;
   gap: 16px;
-  padding: 0 max(var(--gutter), calc((100vw - 1200px) / 2 + var(--gutter)));
+  padding-right: max(var(--gutter), calc((100vw - 1200px) / 2 + var(--gutter)));
+  padding-left: max(var(--gutter), calc((100vw - 1200px) / 2 + var(--gutter)));
   background: color-mix(in oklab, var(--paper) 82%, transparent);
   backdrop-filter: saturate(1.4) blur(16px);
   -webkit-backdrop-filter: saturate(1.4) blur(16px);
@@ -679,7 +707,9 @@ code {
   bottom: 0;
   display: grid;
   grid-template-columns: repeat(4, 1fr);
-  padding: 6px 8px calc(6px + env(safe-area-inset-bottom));
+  padding: 6px 8px calc(6px + var(--sat-bottom));
+  padding-left: calc(8px + var(--sat-left));
+  padding-right: calc(8px + var(--sat-right));
   background: color-mix(in oklab, var(--paper) 86%, transparent);
   backdrop-filter: saturate(1.4) blur(18px);
   -webkit-backdrop-filter: saturate(1.4) blur(18px);
@@ -703,7 +733,7 @@ code {
   color: var(--terra);
 }
 .app:not(.is-focus) {
-  --tab: calc(64px + env(safe-area-inset-bottom));
+  --tab: calc(64px + var(--sat-bottom));
   padding-bottom: var(--tab);
 }
 
@@ -763,6 +793,7 @@ code {
   color: var(--ink-3);
   text-align: center;
   padding: 24px;
+  padding-top: calc(24px + var(--sat-top));
 }
 .spinner {
   display: block;
@@ -1222,7 +1253,7 @@ code {
   overscroll-behavior: contain;
   background: var(--paper);
   border-radius: 28px 28px 0 0;
-  padding: 26px var(--gutter) calc(28px + env(safe-area-inset-bottom));
+  padding: 26px var(--gutter) calc(28px + var(--sat-bottom));
   box-shadow: var(--shadow-lg);
   animation: sheet-up 0.42s var(--ease);
   outline: none;
@@ -2235,6 +2266,7 @@ code {
   align-items: center;
   gap: 14px;
   padding: 12px max(var(--gutter), calc((100vw - 980px) / 2));
+  padding-top: calc(12px + var(--sat-top));
   background: color-mix(in oklab, var(--paper) 88%, transparent);
   backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
@@ -2316,7 +2348,7 @@ code {
   position: sticky;
   bottom: 0;
   margin: 28px calc(-1 * var(--gutter)) -40px;
-  padding: 16px var(--gutter) calc(16px + env(safe-area-inset-bottom));
+  padding: 16px var(--gutter) calc(16px + var(--sat-bottom));
   background: linear-gradient(transparent, var(--paper) 32%);
   display: flex;
   align-items: center;
@@ -2630,7 +2662,7 @@ code {
   bottom: 0;
   z-index: 10;
   margin: 0 calc(-1 * var(--gutter)) -40px;
-  padding: 0 var(--gutter) env(safe-area-inset-bottom);
+  padding: 0 var(--gutter) var(--sat-bottom);
   animation: rise 0.42s var(--ease);
 }
 @keyframes rise {
@@ -3302,7 +3334,7 @@ code {
   object-position: 60% 40%;
 }
 .onboard-body {
-  padding: 24px var(--gutter) calc(24px + env(safe-area-inset-bottom));
+  padding: 24px var(--gutter) calc(24px + var(--sat-bottom));
   display: grid;
   gap: 20px;
 }
@@ -3695,7 +3727,7 @@ a:hover .mark-needle,
 }
 .splash-skip {
   position: absolute;
-  top: max(18px, env(safe-area-inset-top));
+  top: max(18px, var(--sat-top));
   right: 20px;
   padding: 8px 14px;
   border-radius: 999px;
@@ -4154,7 +4186,7 @@ a:hover .mark-needle,
   display: grid;
   grid-template-columns: repeat(4, 1fr);
   gap: 8px;
-  padding: 10px var(--gutter) calc(10px + env(safe-area-inset-bottom));
+  padding: 10px var(--gutter) calc(10px + var(--sat-bottom));
   background: var(--paper);
   border-top: 1px solid var(--line);
 }
@@ -4202,6 +4234,6 @@ a:hover .mark-needle,
     min-height: 48px;
   }
   .learn-actions {
-    padding-bottom: calc(16px + env(safe-area-inset-bottom));
+    padding-bottom: calc(16px + var(--sat-bottom));
   }
 }

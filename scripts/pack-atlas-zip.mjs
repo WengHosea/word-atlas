@@ -40,9 +40,19 @@ const dirSize = (dir) => {
 const { total, count } = dirSize(atlasDir);
 console.log(`packing ${count} files (${(total / 1024 / 1024).toFixed(1)} MB) -> ${outFile}`);
 
-// `tar -a` picks the zip format from the file extension on Windows.
-execFileSync("tar.exe", ["-a", "-c", "-f", outFile, "-C", path.dirname(atlasDir), path.basename(atlasDir)], {
+// `tar -a` is a BSD tar extension; GNU tar ignores it and writes a tar file
+// with a `.zip` name, which `java.util.zip.ZipFile` cannot open. `jar cMf`
+// always produces a real ZIP.
+const jar = process.platform === "win32" ? "jar.exe" : "jar";
+execFileSync(jar, ["cMf", path.resolve(outFile), path.basename(atlasDir)], {
+  cwd: path.dirname(atlasDir),
   stdio: "inherit",
 });
+
+const magic = fs.readFileSync(outFile).subarray(0, 2).toString("latin1");
+if (magic !== "PK") {
+  console.error(`pack-atlas-zip: ${outFile} is not a ZIP archive (magic=${JSON.stringify(magic)})`);
+  process.exit(1);
+}
 
 console.log(`done: ${outFile} (${(fs.statSync(outFile).size / 1024 / 1024).toFixed(1)} MB)`);

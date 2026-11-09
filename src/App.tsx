@@ -1,4 +1,5 @@
 import { BookOpen, ChevronLeft, ChevronRight, Compass, Github, Keyboard, Moon, Search, Sun, User } from "lucide-react";
+import { SystemBars, SystemBarsStyle } from "@capacitor/core";
 import { useCallback, useEffect, useState } from "react";
 import { AtlasContext, useAtlas, useEntry } from "./atlas/context";
 import { loadOpenAtlas, loadPrivateAtlas } from "./atlas/data";
@@ -39,6 +40,11 @@ function useTheme() {
     else root.setAttribute("data-theme", theme);
     const dark = theme === "dark" || (theme === "system" && matchMedia("(prefers-color-scheme: dark)").matches);
     document.querySelector('meta[name="theme-color"]')?.setAttribute("content", dark ? "#0D1120" : "#F6F1E7");
+    // Keep the status bar icons readable: light icons on the dark paper,
+    // dark icons on the light paper.
+    void SystemBars.setStyle({ style: dark ? SystemBarsStyle.Dark : SystemBarsStyle.Light }).catch(() => {
+      /* the plugin is unavailable in the browser */
+    });
   }, [theme]);
   return theme;
 }
