@@ -7,6 +7,7 @@ import android.os.Build;
 import android.os.StatFs;
 import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
+import android.content.res.AssetManager;
 
 import com.getcapacitor.JSObject;
 import com.getcapacitor.Plugin;
@@ -63,6 +64,12 @@ public class MediaPackPlugin extends Plugin {
     /** Name of the file that records which build is running on the device. */
     static final String STAMP_NAME = "version.txt";
 
+    /** Name of the media pack when it is bundled inside the APK. */
+    static final String BUNDLED_ASSET = "atlas.zip";
+
+    /** Name of the copy of the bundled pack in the app's private storage. */
+    static final String BUNDLED_COPY = "atlas-bundled.zip";
+
     /**
      * Candidate locations for the media pack archive, most persistent first.
      *
@@ -86,6 +93,56 @@ public class MediaPackPlugin extends Plugin {
         };
     }
 
+    /**
+     * Copy the media pack that ships inside the APK into private storage.
+     *
+     * Bundling the pack removes the whole "push 600 MB onto the phone first"
+     * dance. The APK's assets are compressed, so the archive is streamed out
+     * to a real file first — {@link java.util.zip.ZipFile} needs one.
+     *
+     * @return the extracted file, or null when the APK has no bundled pack.
+     */
+    private File bundledPack() {
+        try {
+            AssetManager assets = getContext().getAssets();
+            // A cheap existence probe: opening the asset throws when absent.
+            try (java.io.InputStream probe = assets.open(BUNDLED_ASSET)) {
+                if (probe == null) return null;
+            } catch (java.io.IOException notBundled) {
+                log("no bundled " + BUNDLED_ASSET + " in this APK");
+                return null;
+            }
+
+            File dir = getContext().getFilesDir();
+            File out = new File(dir, BUNDLED_COPY);
+            // Already copied by a previous run?
+            if (out.isFile() && out.length() > 0) {
+                log("bundled pack already staged: " + out.getAbsolutePath()
+                    + " (" + out.length() + " bytes)");
+                return out;
+            }
+
+            log("staging bundled " + BUNDLED_ASSET + " from the APK ...");
+            long copied = 0;
+            try (
+                java.io.InputStream in = assets.open(BUNDLED_ASSET);
+                java.io.OutputStream os = new java.io.FileOutputStream(out)
+            ) {
+                byte[] buf = new byte[256 * 1024];
+                int n;
+                while ((n = in.read(buf)) > 0) {
+                    os.write(buf, 0, n);
+                    copied += n;
+                }
+            }
+            log("staged bundled pack: " + copied + " bytes -> " + out.getAbsolutePath());
+            return out;
+        } catch (Throwable t) {
+            logError("bundledPack", t);
+            return null;
+        }
+    }
+
     /** The directory the media is unpacked into. */
     private File targetDir() {
         File dir = getContext().getExternalFilesDir(null);
@@ -103,9 +160,29 @@ public class MediaPackPlugin extends Plugin {
     /** First existing pack archive, or null when none was pushed. */
     private File findPack() {
         for (File f : packCandidates()) {
-            if (f.exists() && f.length() > 0) return f;
+            if (!f.exists() || f.length() == 0) continue;
+            // Android 11+ refuses to read files in the shared Download folder
+            // unless the app holds "all files access". A pack that we cannot
+            // open is worse than no pack at all: it makes the app look
+            // broken instead of telling the user what is missing. So probe
+            // it and fall through to the next candidate.
+            if (!isReadable(f)) {
+                log("skipping unreadable pack: " + f.getAbsolutePath()
+                    + " (Android 11+ needs 'all files access' for Download/)");
+                continue;
+            }
+            return f;
         }
         return null;
+    }
+
+    /** True when the file exists and can actually be opened for reading. */
+    private boolean isReadable(File f) {
+        try (java.io.InputStream in = new java.io.FileInputStream(f)) {
+            return in.read() >= 0;
+        } catch (Exception e) {
+            return false;
+        }
     }
 
     // ---------------------------------------------------------------- log ---
@@ -184,12 +261,23 @@ public class MediaPackPlugin extends Plugin {
         out.put("ready", AtlasExtractor.isReady(target));
         out.put("present", target.isDirectory());
         out.put("packFound", zip != null);
+        out.put("bundled", hasBundledAsset());
         out.put("packPath", zip == null ? "" : zip.getAbsolutePath());
         out.put("packBytes", zip == null ? 0L : zip.length());
         out.put("path", target.getAbsolutePath());
         out.put("logPath", new File(logDir(), LOG_NAME).getAbsolutePath());
         out.put("files", countFiles(target));
         return out;
+    }
+
+    /** True when this APK ships with the media pack inside it. */
+    private boolean hasBundledAsset() {
+        try {
+            getContext().getAssets().open(BUNDLED_ASSET).close();
+            return true;
+        } catch (Exception e) {
+            return false;
+        }
     }
 
     /** Rough count of files in the unpacked directory (bounded walk). */
@@ -249,6 +337,11 @@ public class MediaPackPlugin extends Plugin {
                 }
                 File zip = findPack();
                 if (zip == null) {
+                    // Nothing pushed by hand — fall back to the copy that
+                    // ships inside the APK.
+                    zip = bundledPack();
+                }
+                if (zip == null) {
                     log("NO PACK FOUND. candidates:");
                     for (File f : packCandidates()) {
                         log("  " + f.getAbsolutePath() + " exists=" + f.exists());
@@ -282,6 +375,9 @@ public class MediaPackPlugin extends Plugin {
         worker.execute(() -> {
             try {
                 File zip = findPack();
+                if (zip == null) {
+                    zip = bundledPack();
+                }
                 if (zip == null) {
                     // The caller may point at a specific file name.
                     zip = new File(getContext().getFilesDir(), name);

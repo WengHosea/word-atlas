@@ -22,16 +22,15 @@ jobs:
       ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
 
     steps:
-      - name: Checkout without media pack
+      # The media pack is bundled into the APK, so the full media tree has
+      # to be checked out here.
+      - name: Checkout with media pack
         uses: actions/checkout@v4
         with:
           lfs: false
           sparse-checkout-cone-mode: false
           sparse-checkout: |
             /*
-            !/public/atlas/img/
-            !/public/atlas/thumb/
-            !/public/atlas/audio/
 
       # Capacitor CLI 8 hard-requires Node >= 22, so Node 20 cannot be used here.
       - name: Setup Node.js 22
@@ -66,6 +65,11 @@ jobs:
 
       - name: Sync Capacitor Android project
         run: npx cap sync android
+
+      # Put the media pack into the APK's assets so the app never needs a
+      # manual 600 MB push. See scripts/bundle-media-pack.mjs.
+      - name: Bundle media pack into the APK assets
+        run: node scripts/bundle-media-pack.mjs
 
       # Safety net: the stable debug keystore must exist, otherwise every
       # build would be signed differently and reinstalling the app would wipe
