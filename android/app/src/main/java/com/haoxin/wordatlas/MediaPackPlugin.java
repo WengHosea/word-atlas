@@ -113,7 +113,12 @@ public class MediaPackPlugin extends Plugin {
                 return null;
             }
 
-            File dir = getContext().getFilesDir();
+            // Stage next to the unpack target, on the external volume. The
+            // pack is ~600 MB and the unpacked tree is another ~650 MB;
+            // keeping the staged copy in the internal volume would need
+            // well over a gigabyte of internal storage.
+            File dir = getContext().getExternalFilesDir(null);
+            if (dir == null) dir = getContext().getFilesDir();
             File out = new File(dir, BUNDLED_COPY);
             // Already copied by a previous run?
             if (out.isFile() && out.length() > 0) {
@@ -442,9 +447,27 @@ public class MediaPackPlugin extends Plugin {
         log("unpack finished: files=" + r.files + " written=" + r.written
             + " bytes=" + r.bytes + " in " + (System.currentTimeMillis() - started) + " ms"
             + " ready=" + AtlasExtractor.isReady(target));
+        discardStagedBundledCopy(zip);
         JSObject p = state();
         p.put("phase", "done");
         emit(p);
         return r;
+    }
+
+    /**
+     * Delete the staged copy of a bundled pack once it has been unpacked.
+     *
+     * The copy is ~600 MB and the unpacked tree is another ~650 MB; keeping
+     * both around would need more than a gigabyte of free space. A pack the
+     * user pushed by hand is never deleted.
+     */
+    private void discardStagedBundledCopy(File zip) {
+        if (zip == null) return;
+        if (!BUNDLED_COPY.equals(zip.getName())) return;
+        if (zip.delete()) {
+            log("removed the staged bundled pack " + zip.getAbsolutePath());
+        } else {
+            log("could not remove the staged bundled pack " + zip.getAbsolutePath());
+        }
     }
 }

@@ -71,6 +71,20 @@ jobs:
       - name: Bundle media pack into the APK assets
         run: node scripts/bundle-media-pack.mjs
 
+      # Guard rail: unpack the pack with the very class the app uses. A
+      # pack that is not a real ZIP (the `tar -a` trap) makes ZipFile throw,
+      # the app then shows no illustrations and no audio while the build
+      # looks perfectly green.
+      - name: Verify the media pack can actually be unpacked
+        run: |
+          mkdir -p build/packcheck
+          javac -encoding UTF-8 -d build/packcheck \
+            android/app/src/main/java/com/haoxin/wordatlas/AtlasExtractor.java \
+            tools/atlas/PackTest.java
+          java -cp build/packcheck PackTest \
+            android/app/src/main/assets/atlas.zip \
+            build/packcheck/media
+
       # Safety net: the stable debug keystore must exist, otherwise every
       # build would be signed differently and reinstalling the app would wipe
       # the user's 600 MB media pack.

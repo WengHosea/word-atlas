@@ -244,6 +244,8 @@ export function Me({ privateAvailable }: { privateAvailable: boolean }) {
                   ? `媒体包已就绪（${pack.files.toLocaleString()} 个文件），图片与发音可用。`
                   : pack.phase === "unpacking"
                     ? pack.message
+                    : pack.phase === "error"
+                      ? `媒体包解压失败：${pack.message}`
                     : pack.bundled
                       ? "此安装包内置了媒体包，点下面的「解压媒体包」即可（首次约需几分钟）。"
                       : "媒体包尚未就绪，图片与发音可能无法显示。"}

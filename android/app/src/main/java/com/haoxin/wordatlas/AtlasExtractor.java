@@ -86,6 +86,7 @@ public final class AtlasExtractor {
         if (zip == null || !zip.isFile() || zip.length() == 0) {
             throw new IOException("媒体包不存在或为空: " + (zip == null ? "null" : zip.getAbsolutePath()));
         }
+        assertRealZip(zip);
         if (!target.isDirectory() && !target.mkdirs() && !target.isDirectory()) {
             throw new IOException("无法创建目录: " + target.getAbsolutePath());
         }
@@ -162,6 +163,27 @@ public final class AtlasExtractor {
         }
 
         return new Result(files, total, bytes, written);
+    }
+
+    /**
+     * Fail with a readable message when the archive is not a ZIP.
+     *
+     * The media pack used to be packed with `tar -a`, which only produces a
+     * ZIP on BSD tar. On GNU tar it silently produced a tar file, and
+     * `ZipFile` then failed with a bare "error in opening zip file" that
+     * said nothing about the real cause. Checking the two magic bytes up
+     * front turns that into an actionable message.
+     */
+    private static void assertRealZip(File zip) throws IOException {
+        byte[] magic = new byte[2];
+        try (InputStream in = new FileInputStream(zip)) {
+            int read = in.read(magic);
+            if (read < 2 || magic[0] != 'P' || magic[1] != 'K') {
+                throw new IOException(
+                    "媒体包不是有效的 ZIP 文件（文件头不是 PK）。它可能被打包成了 tar，"
+                    + "请用 scripts/bundle-media-pack.mjs 重新生成: " + zip.getAbsolutePath());
+            }
+        }
     }
 
     /**
