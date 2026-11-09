@@ -3,7 +3,7 @@
 本文档说明如何用 GitHub Actions 在云端打出 Android 安装包（APK），以及如何把
 体积较大的离线媒体包（插画 + 音频）导入手机，让 App 立刻可用。
 
-> **从 build 22 起，媒体包直接打进 APK 里。**
+> **从 build 24 起，媒体包直接打进 APK 里。**
 > 下载一个约 630 MB 的 APK 装上就行，**不需要再手动推 600 MB 的 atlas.zip**。
 > App 首次启动时会把内置的媒体包解压到自己的私有目录，几分钟后插画与发音即可用。
 > 后面的"手动推包"章节保留给旧版 APK 或需要重新解压时使用。
@@ -45,7 +45,7 @@
 
 ### 1.2 等待构建完成
 
-![Actions 运行状态](../docs/actions-run-v20.png)
+![Actions 运行状态](../docs/actions-run-v24.png)
 
 页面顶部 **Status** 变成绿色的 `Success` 即成功；红色 `Failure` 时点开失败步骤，
 右侧展开日志能看到具体报错。
@@ -62,18 +62,21 @@
 https://github.com/WengHosea/word-atlas/releases/download/apk-debug-<运行号>/app-debug.apk
 ```
 
-本次已发布的版本：**`apk-debug-22`**（对应提交 `ef59d61`，**内置媒体包**）
+本次已发布的版本：**`apk-debug-24`**（对应提交 `f3600cb`，**内置媒体包**）
 
 ```powershell
 # 直接下载到本机
-Invoke-WebRequest "https://github.com/WengHosea/word-atlas/releases/download/apk-debug-22/app-debug.apk" -OutFile D:\Downloads\app-debug.apk
+Invoke-WebRequest "https://github.com/WengHosea/word-atlas/releases/download/apk-debug-24/app-debug.apk" -OutFile D:\Downloads\app-debug.apk
 ```
 
 也可以在 <https://github.com/WengHosea/word-atlas/releases> 页面点击 `app-debug.apk` 下载。
 
 ![产物下载](../docs/releases-v18.png)
 
-![Release 详情](../docs/release-20.png)
+![Release 详情](../docs/release-24.png)
+
+> build 24 的 `app-debug.apk` 是 **624 MB** —— 因为媒体包已经打进去了。
+> 旧版本（14 MB）不含媒体，需要另外推 600 MB 的 `atlas.zip`。
 
 **方式 B · Actions Artifacts**
 
@@ -84,10 +87,10 @@ Invoke-WebRequest "https://github.com/WengHosea/word-atlas/releases/download/apk
 
 ## 二、把 APK 装到手机上
 
-> 手机上按文件名排序，最新的那个才是要装的：`app-debug-v22.apk`。
+> 手机上按文件名排序，最新的那个才是要装的：`app-debug-v24.apk`。
 > 历史版本 `v10 / v11 / v16 / v18 / v20` 建议删掉，避免装错。
 
-装 **build 22 或更新**的版本时，APK 约 630 MB，手机上的旧 `atlas.zip`
+装 **build 24 或更新**的版本时，APK 约 630 MB，手机上的旧 `atlas.zip`
 **不需要再推了**，App 自带。
 
 1. 手机 **设置 → 其他设置 → 开发者选项** → 打开 **USB 调试**
@@ -115,13 +118,13 @@ adb install -r "D:\Downloads\app-debug.apk"
 
 ## 三、导入离线媒体包
 
-> **build 22 及以后不需要这一章。**
+> **build 24 及以后不需要这一章。**
 > 媒体包已经打进 APK 里，打开 App 会自动释放并解压。
 > 本章保留给 build 20 及更早的版本，或者需要重置媒体包时使用。
 
 ### 3.0-（新版）首次启动自动解压：什么都不用做
 
-装好 build 22 的 APK 后：
+装好 build 24 的 APK 后：
 
 1. 打开 App，首页出现全屏进度页 `正在解压媒体包 x/37,576`
 2. 等它跑完（手机存储速度不同，约 3–10 分钟）
@@ -420,7 +423,7 @@ ERROR in load: java.io.FileNotFoundException:
 所以 build 20 之前的整条"把 atlas.zip 放进 Download → App 去读"的路线
 在 Android 11+ 上是**行不通的**。
 
-**两个修法（build 22 一起做了）：**
+**两个修法（build 24 一起做了）：**
 
 1. **把媒体包打进 APK**（主方案）—— App 从自己的 assets 里读，永远不受外部存储限制，
    用户也再不用手动推 600 MB。
