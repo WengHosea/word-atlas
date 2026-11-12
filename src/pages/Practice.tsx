@@ -124,12 +124,26 @@ function TypingRound({ mode, entries, onExit, onAgain }: { mode: Mode; entries: 
   const input = useRef<HTMLInputElement>(null);
   const e = entries[i];
   const target = mode === "word" ? e.w : e.ex[0].en;
+  // The dictation cue is a recording of the first example sentence. Keep one
+  // URL per item so the "再听一遍" button can replay exactly the same file.
+  const cueUrl = mode === "dictation" ? atlas.audio(e, "ex") : null;
+  const [speaking, setSpeaking] = useState(false);
+
+  const replay = async () => {
+    if (speaking) return;
+    setSpeaking(true);
+    try {
+      await play(cueUrl, e.ex[0].en, settings.accent);
+    } finally {
+      setSpeaking(false);
+    }
+  };
 
   useEffect(() => {
     setValue("");
     started.current = null;
     input.current?.focus();
-    if (mode === "dictation") void play(atlas.audio(e, "ex"), e.ex[0].en, settings.accent);
+    if (mode === "dictation") void play(cueUrl, e.ex[0].en, settings.accent);
     if (mode === "word" && settings.autoplay) void play(atlas.audio(e, settings.accent), e.w, settings.accent);
   }, [i]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => () => stopAudio(), []);
@@ -212,8 +226,16 @@ function TypingRound({ mode, entries, onExit, onAgain }: { mode: Mode; entries: 
         {mode !== "word" && (
           <p className="typing-zh">
             {mode === "dictation" && (
-              <button className="link" onClick={() => play(atlas.audio(e, "ex"), e.ex[0].en, settings.accent)}>
-                再听一遍
+              <button
+                type="button"
+                className={`link ${speaking ? "is-speaking" : ""}`}
+                onClick={(ev) => {
+                  ev.stopPropagation();
+                  void replay();
+                }}
+                aria-label="再听一遍"
+              >
+                {speaking ? "播放中…" : "再听一遍"}
               </button>
             )}
             {e.ex[0].zh}

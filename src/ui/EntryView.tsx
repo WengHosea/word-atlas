@@ -58,7 +58,11 @@ export function EntryView({ entry, mode = "detail", eager = true }: { entry: Ent
   const accent = useStore((s) => s.settings.accent);
   const topicIdx = atlas.topics.findIndex((t) => t[0] === entry.topic);
   const topic = atlas.topics[topicIdx];
-  const exUrls = [atlas.audio(entry, "ex"), atlas.audio(entry, "ex2")];
+  // The second example sentence is the IELTS-context one. When it has no
+  // recording yet, fall back to the everyday sentence's audio so the
+  // speaker button is never dead. (On Android the device voice fallback is
+  // usually unavailable, so a silent button is very confusing.)
+  const exUrls = [atlas.audio(entry, "ex"), atlas.audio(entry, "ex2") ?? atlas.audio(entry, "ex")];
   const famLinks = entry.fam.map((f) => {
     const w = f.replace(/\s*\(.*\)\s*$/, "").trim().toLowerCase();
     const hit = atlas.words.find((x) => x.word.toLowerCase() === w);

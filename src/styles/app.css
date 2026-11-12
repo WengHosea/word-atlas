@@ -3017,6 +3017,14 @@ code {
   opacity: 0;
   inset: 0;
   font-size: 16px;
+  /*
+   * The hidden input covers the whole stage so it can grab focus from a
+   * tap anywhere. It must not swallow clicks meant for the controls that
+   * live above it (the "再听一遍" button), so it lets every pointer event
+   * pass through. The input still receives keystrokes because it is
+   * focused programmatically.
+   */
+  pointer-events: none;
 }
 .typing-help {
   font-size: 13px;

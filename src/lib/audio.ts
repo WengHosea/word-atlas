@@ -20,6 +20,9 @@ export async function play(url: string | null | undefined, text: string, accent:
   }
 }
 
+/** How long to wait for a voice engine before giving up on it. */
+const SPEECH_TIMEOUT = 8000;
+
 async function speak(url: string | null | undefined, text: string, accent: "uk" | "us", rate: number) {
   stopAudio();
   const mine = ++token;
@@ -32,6 +35,9 @@ async function speak(url: string | null | undefined, text: string, accent: "uk" 
       await new Promise<void>((r) => {
         a.onended = () => r();
         a.onpause = () => r();
+        // A recording that dies mid-stream (a truncated file, a decoder
+        // error) must not leave the caller waiting forever.
+        a.onerror = () => r();
       });
       return "recorded" as const;
     } catch {
@@ -49,6 +55,19 @@ async function speak(url: string | null | undefined, text: string, accent: "uk" 
   await new Promise<void>((r) => {
     u.onend = () => r();
     u.onerror = () => r();
+    // Android WebViews expose `speechSynthesis` but usually ship no voice
+    // engine at all. In that case `speak()` neither fires `onend` nor
+    // `onerror`, so the promise would never settle and the UI would wait
+    // forever. The timeout turns that into a normal, silent return.
+    const timer = window.setTimeout(() => r(), SPEECH_TIMEOUT);
+    u.onend = () => {
+      window.clearTimeout(timer);
+      r();
+    };
+    u.onerror = () => {
+      window.clearTimeout(timer);
+      r();
+    };
     speechSynthesis.speak(u);
   });
   return "device" as const;
